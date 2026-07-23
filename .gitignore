@@ -67,3 +67,10 @@ vcpkg_installed/
 # test output & cache
 Testing/
 .cache/
+.pio/
+.pioenvs/
+.piolibdeps/
+.vscode/*.log
+.vscode/ipch/
+.vscode/.browse.VC.db*
+*.code-workspace.user

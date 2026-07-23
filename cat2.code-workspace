@@ -1,0 +1,9 @@
+{
+  "folders": [
+    { "path": "cat2" }
+  ],
+  "settings": {
+    "platformio-ide.useBuiltinPIOCore": true,
+    "files.exclude": { "**/.pio": true }
+  }
+}
