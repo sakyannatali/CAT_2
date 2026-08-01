@@ -6,11 +6,14 @@
 #include "tof_sensors.h"
 
 static Adafruit_VL6180X drivers[TOF_SENSOR_COUNT];
-static uint32_t lastRead=0,lastReinit=0;
+static uint32_t lastRead=0;
 static uint8_t nextRead=0;
+static uint8_t readFailures[TOF_SENSOR_COUNT];
+static bool runtimeDisabled[TOF_SENSOR_COUNT];
 struct ChannelDiag { bool selected,present,supported,initialized; uint8_t model,revision; };
 static ChannelDiag diag[I2C_CHANNEL_COUNT];
 static const uint32_t VL6180X_READY_TIMEOUT_MS = 80;
+static const uint8_t VL6180X_MAX_FAILURES = 3;
 static const uint16_t VL6180X_SYSRANGE_START = 0x0018;
 static const uint16_t VL6180X_SYSTEM_INTERRUPT_CLEAR = 0x0015;
 static const uint16_t VL6180X_RESULT_INTERRUPT_STATUS_GPIO = 0x004F;
@@ -66,13 +69,29 @@ static bool readRangeSafe(uint8_t &distance,uint8_t &status,uint8_t channel){
   return true;
 }
 
+static void disableSlot(uint8_t slot,const __FlashStringHelper *reason){
+  TofState&s=app.tof[slot];
+  Serial.print(F("ToF "));Serial.print(slot+1);Serial.print(F(" ch="));Serial.print(s.channel);Serial.print(F(" disabled: "));Serial.println(reason);
+  s.initialized=false;s.valid=false;s.timeout=false;
+  runtimeDisabled[slot]=true;
+}
+
+static void noteReadResult(uint8_t slot,bool ok){
+  if(ok){readFailures[slot]=0;return;}
+  if(readFailures[slot]<255)++readFailures[slot];
+  Serial.print(F("ToF "));Serial.print(slot+1);Serial.print(F(" failure count="));Serial.println(readFailures[slot]);
+  if(readFailures[slot]>=VL6180X_MAX_FAILURES)disableSlot(slot,F("too many read failures; not polling until manual tof scan/reboot"));
+}
+
 static bool initializeSlot(uint8_t slot,uint8_t channel){
   TofState&s=app.tof[slot];
+  readFailures[slot]=0;runtimeDisabled[slot]=false;
   s.channel=channel;s.present=true;s.supportedModel=true;s.modelId=diag[channel].model;s.revisionId=diag[channel].revision;
   if(!i2cMuxSelect(channel))return false;
   const bool ok=drivers[slot].begin(&Wire);
   reportWireTimeout(F("VL6180X init"));
   s.initialized=ok;diag[channel].initialized=ok;
+  if(!ok)runtimeDisabled[slot]=true;
   return ok;
 }
 
@@ -100,7 +119,7 @@ void tofSensorsScan(){
     Serial.print(F("ToF init channel "));Serial.print(ch);Serial.print(F(": "));Serial.println(ok?F("OK"):F("FAILED"));
     ++slot;
   }
-  for(;slot<TOF_SENSOR_COUNT;++slot)app.tof[slot]={255,0,0,0,false,false,false,false,false,0};
+  for(;slot<TOF_SENSOR_COUNT;++slot){app.tof[slot]={255,0,0,0,false,false,false,false,false,0};readFailures[slot]=0;runtimeDisabled[slot]=true;}
 }
 
 void tofSensorsBegin(){tofSensorsScan();}
@@ -109,12 +128,12 @@ void tofSensorsService(uint32_t now){
   if((uint32_t)(now-lastRead)<60) return;
   lastRead=now;
   const uint8_t slot=nextRead++%TOF_SENSOR_COUNT; TofState&s=app.tof[slot];
-  if(!s.initialized){ if((uint32_t)(now-lastReinit)>TOF_REINIT_MS){lastReinit=now;tofSensorsScan();} return; }
-  if(!i2cMuxSelect(s.channel)){s.valid=false;reportWireTimeout(F("ToF mux select"));return;}
+  if(!s.initialized||runtimeDisabled[slot]) return;
+  if(!i2cMuxSelect(s.channel)){s.valid=false;reportWireTimeout(F("ToF mux select"));noteReadResult(slot,false);return;}
   uint8_t distance=0,status=0xFF;
   const bool ok=readRangeSafe(distance,status,s.channel);
   s.timeout=!ok&&status==1;
-  if(ok&&status==0){s.distanceMm=distance;s.valid=true;s.updatedMs=now;}else{s.valid=false;if(ok){Serial.print(F("ToF ch "));Serial.print(s.channel);Serial.print(F(" range status="));Serial.println(status);}}
+  if(ok&&status==0){s.distanceMm=distance;s.valid=true;s.updatedMs=now;noteReadResult(slot,true);}else{s.valid=false;if(ok){Serial.print(F("ToF ch "));Serial.print(s.channel);Serial.print(F(" range status="));Serial.println(status);}noteReadResult(slot,false);}
 }
 
 void tofSensorsPrintStatus(){
