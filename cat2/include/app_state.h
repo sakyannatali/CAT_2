@@ -6,8 +6,9 @@ enum FlowFeedbackSource : uint8_t { FLOW_SENSOR_1, FLOW_SENSOR_2, FLOW_AVERAGE_O
 struct ValueState { float value; bool valid; uint32_t updatedMs; };
 struct FlowState {
   uint32_t totalPulses, lastPulsePeriodUs, lastPulseAgeMs;
-  float frequencyHz, massFlowKgH, filteredMassFlowKgH;
-  bool valid, stale, calibrated;
+  float frequencyHz, instantFlowLpm, filteredFlowLpm, displayFlowLpm;
+  float densityCorrection, outletTemperatureUsedC;
+  bool valid, stale, zeroFlow, conversionConfigured, densityValid;
 };
 struct TofState {
   uint8_t channel, modelId, revisionId;
@@ -19,7 +20,7 @@ struct AppState {
   bool compressorOn, ventRelayOn;
   float requestedFanPowerPercent, appliedFanPowerPercent;
   float gatePercent; uint8_t gateAngle;
-  FlowControlMode flowControlMode; float flowSetpointKgH;
+  FlowControlMode flowControlMode; float flowSetpointLpm;
   bool timerRunning; uint32_t timerElapsedMs;
   ValueState outletTemperature, skinTemperature[2];
   FlowState flow[2]; TofState tof[2];
@@ -33,6 +34,7 @@ void setVentEnabled(bool on);
 void setFanPowerPercent(float percent);
 void setGatePercent(float percent);
 bool setFlowControlMode(FlowControlMode mode);
-void setFlowSetpointKgH(float kgH);
+bool setFlowSetpointLpm(float lpm);
+void stopAutoForSafety(const char *reason);
 void setFlowFeedbackSource(FlowFeedbackSource source);
 FlowFeedbackSource getFlowFeedbackSource();

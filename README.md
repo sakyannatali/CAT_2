@@ -22,11 +22,17 @@ The default target is `megaatmega2560` (Arduino Mega 2560). No COM port is fixed
 - The HMI source is a binary Nextion project and was not modified by text tooling. Firmware support and exact editor changes are in [`nextion/CHANGES.md`](nextion/CHANGES.md).
 - Neither Arduino firmware nor a Nextion `.tft` has been uploaded to hardware.
 
-## Calibration and PI control
+## Flow conversion and PI control
 
-The two calibration tables are in [`cat2/include/config.h`](cat2/include/config.h), `FLOW1_CALIBRATION` and `FLOW2_CALIBRATION`. Leave `FLOW_CALIBRATED=false` until measured points have been inserted and pass validation. In that state the display reports Hz and AUTO is deliberately blocked.
+The experimental flow conversions are built into the current firmware. The UI
+uses density-corrected L/min and refreshes each flow display from its
+non-blocking 5-second moving average. Raw Hz remains available only through
+`flow raw` diagnostics; AUTO is no longer blocked by the obsolete
+`FLOW_CALIBRATED` flag.
 
-The initial PI parameters are Kp=0.5 (normalised error) and Ti=100 s. See [`cat2/docs/CALIBRATION.md`](cat2/docs/CALIBRATION.md) and [`cat2/docs/PI_CONTROL.md`](cat2/docs/PI_CONTROL.md).
+The initial PI parameters are Kp=0.5 (normalised error) and Ti=100 s. See
+[`cat2/docs/FLOW_CALIBRATION.md`](cat2/docs/FLOW_CALIBRATION.md) and
+[`cat2/docs/PI_CONTROL.md`](cat2/docs/PI_CONTROL.md).
 
 ## Documentation
 

@@ -24,17 +24,15 @@ static const int FLOW_INTERRUPT_MODE = FALLING;  // NPN with external pull-up.
 static const uint32_t FLOW_MIN_PULSE_PERIOD_US = 1200UL;
 static const uint32_t FLOW_ZERO_TIMEOUT_MS = 3000UL;
 static const uint32_t FLOW_UPDATE_INTERVAL_MS = 250UL;
-static const uint32_t FLOW_FILTER_TIME_MS = 1500UL;
-
-typedef CalibrationPoint FlowCalibrationPoint;
-
-// Insert real calibration points here. The intentionally duplicate placeholder
-// prevents accidental use before calibration; do not replace it with guessed data.
-static const bool FLOW_CALIBRATED = false;
-static const FlowCalibrationPoint FLOW1_CALIBRATION[] = {{0.0f, 0.0f}, {0.0f, 0.0f}};
-static const FlowCalibrationPoint FLOW2_CALIBRATION[] = {{0.0f, 0.0f}, {0.0f, 0.0f}};
-static const uint8_t FLOW1_CALIBRATION_COUNT = sizeof(FLOW1_CALIBRATION) / sizeof(FLOW1_CALIBRATION[0]);
-static const uint8_t FLOW2_CALIBRATION_COUNT = sizeof(FLOW2_CALIBRATION) / sizeof(FLOW2_CALIBRATION[0]);
+// The experimentally measured transfer functions are built into pure_logic.h.
+// Air-density correction comes from include/generated/air_density_table.h.
+static const bool FLOW_CONVERSION_CONFIGURED = true;
+static const uint32_t FLOW_FILTER_WINDOW_MS = 5000UL;
+static const uint32_t FLOW_FILTER_SAMPLE_INTERVAL_MS = 500UL;
+static const uint32_t FLOW_DISPLAY_UPDATE_MS = 5000UL;
+static const uint32_t FLOW_OUTLET_TEMPERATURE_HOLD_MS = 30000UL;
+static const float FLOW_SETPOINT_MIN_LPM = 0.0f;
+static const float FLOW_SETPOINT_MAX_LPM = 100.0f;
 
 static const uint8_t I2C_MUX_ADDRESS = 0x70;
 static const uint32_t I2C_CLOCK_HZ = 50000UL;
@@ -63,9 +61,10 @@ static const uint32_t NEXTION_FULL_SYNC_MS = 1000UL;
 
 static const float PI_DEFAULT_KP = 0.5f;
 static const float PI_DEFAULT_TI_S = 100.0f;
-static const float PI_FLOW_FULL_SCALE_KG_H = 300.0f;
+static const float PI_MIN_NORMALIZATION_LPM = 1.0f;
 static const float PI_MAX_OUTPUT_STEP_PER_S = 5.0f;
-static const float PI_INTEGRAL_LIMIT = 300.0f;
+// With Kp=0.5 and Ti=100 s this range permits bumpless transfer up to 100%.
+static const float PI_INTEGRAL_LIMIT = 20000.0f;
 static const uint32_t PI_UPDATE_INTERVAL_MS = 1000UL;
 // 0 = meter 1, 1 = meter 2, 2 = average of valid meters.
 static const uint8_t PI_DEFAULT_FEEDBACK_SOURCE = 2;

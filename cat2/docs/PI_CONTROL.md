@@ -1,14 +1,25 @@
 # PI flow control
 
-Manual mode accepts fan power directly. AUTO takes a kg/h setpoint and uses a configurable sensor 1, sensor 2, or mean of valid sensors. It is permitted only with valid calibration, a fresh selected flow value, and the vent relay enabled.
+Manual mode accepts fan power directly. AUTO accepts a target in **L/min** and
+uses the latest non-blocking, 5-second filtered flow from sensor 1, sensor 2,
+or the average of valid sensors. The default is `AVERAGE_OF_VALID`; one valid
+sensor is sufficient and a missing one is never treated as zero.
 
-Initial values: `Kp = 0.5`, `Ti = 100 s`, update period 1 s, output 0–100%, and rate limit 5 percentage points/s. The error is normalised by `PI_FLOW_FULL_SCALE_KG_H`; the integrator has anti-windup and is frozen when a saturated output would be driven further outward. MANUAL→AUTO starts from the manual output.
+AUTO is allowed only when the conversion is configured, the selected feedback
+is valid, and the vent relay is on. It starts in MANUAL after reboot. Loss of
+feedback freezes the last output and returns to MANUAL with a diagnostic error;
+it never drives the fan to 100% because a sensor disappeared.
 
-1. Calibrate both meters.
-2. In manual mode verify that increasing requested power changes flow in the expected direction.
-3. Start at Ti=100 s and Kp=0.5.
-4. Increase Kp gradually.
-5. If it oscillates, reduce Kp or increase Ti.
-6. Never tune PI with uncalibrated meters.
+Initial settings are `Kp/Cp = 0.5`, `Ti = 100 s`, one-second PI updates,
+0–100% clamp, and a 5 percentage-point/s output rate limit. Error is relative:
 
-Sensor loss freezes the controller and changes to MANUAL; it never commands 100% due to missing data.
+`(setpointLpm - filteredFlowLpm) / max(setpointLpm, PI_MIN_NORMALIZATION_LPM)`
+
+The integrator has anti-windup and transfer from MANUAL to AUTO is bumpless:
+the present manual fan output is used as the initial AUTO output.
+
+1. Verify the actual flow direction in MANUAL.
+2. Start with Kp=0.5 and Ti=100 s.
+3. Increase Kp in small steps only after observing several 5-second windows.
+4. If it oscillates, reduce Kp or increase Ti.
+5. Do not tune with an invalid outlet-temperature correction or faulty flow sensor.
