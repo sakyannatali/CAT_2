@@ -46,7 +46,7 @@ void piControllerService(uint32_t now) {
   app.piP=terms.p;
   app.piI=terms.i;
   app.piOutputPercent=terms.requested;
-  setFanPowerPercent(terms.requested);
+  setAutomaticFanPowerPercent(terms.requested);
 }
 
 void piControllerSetKp(float value) { if(value>=0&&value<=20) pi.kp=value; }
@@ -74,6 +74,12 @@ void piControllerPrintStatus() {
   Serial.print(F(" I=")); Serial.print(app.piI,3);
   Serial.print(F(" requested=")); Serial.print(app.requestedFanPowerPercent,1);
   Serial.print(F(" applied=")); Serial.print(app.appliedFanPowerPercent,1);
+  const uint32_t now=millis();
+  Serial.print(F(" vent_edit=")); Serial.print(app.ventPowerEdit.applied,1); Serial.print('/'); Serial.print(app.ventPowerEdit.pending,1);
+  Serial.print(F(" gate_edit=")); Serial.print(app.gateEdit.applied,1); Serial.print('/'); Serial.print(app.gateEdit.pending,1);
+  Serial.print(F(" flow_edit=")); Serial.print(app.flowSetpointEdit.applied,1); Serial.print('/'); Serial.print(app.flowSetpointEdit.pending,1);
+  Serial.print(F(" editing=")); Serial.print(app.flowSetpointEdit.editing?F("yes"):F("no"));
+  if(app.flowSetpointEdit.editing) { Serial.print(F(" flow_remaining_ms=")); Serial.print(pendingApplyRemainingMs(app.flowSetpointEdit,now,EDIT_APPLY_TIMEOUT_MS)); }
   if(app.autoBlocked) { Serial.print(F(" blocked=")); Serial.print(app.autoBlockReason); }
   Serial.println();
 }

@@ -19,7 +19,7 @@ The default target is `megaatmega2560` (Arduino Mega 2560). No COM port is fixed
 - Relays are active-low and initialise OFF; AUTO flow control is OFF after reboot.
 - The DS18B20 pin is kept at the working value from `sketches/main`: `A10` (Mega digital 64 / physical legacy value 46). Older documentation calling it “A10” is not a reason to alter the harness.
 - Nextion defaults to `Serial2`: Mega TX2=16, RX2=17, 9600 baud. It was not changed to the README's obsolete Serial1 wiring. To intentionally move it, set `NEXTION_USE_SERIAL1` to `1` in `cat2/include/config.h`, then wire Mega TX1=18 → Nextion RX and Mega RX1=19 ← Nextion TX.
-- The HMI source is a binary Nextion project and was not modified by text tooling. Firmware support and exact editor changes are in [`nextion/CHANGES.md`](nextion/CHANGES.md).
+- `nextion/ui_final.HMI` is manually maintained and is not modified by firmware work. The HMI sends only button triggers; Arduino owns applied/pending values and restores un-applied edits after five seconds. The current protocol is in [`nextion/CHANGES.md`](nextion/CHANGES.md).
 - Neither Arduino firmware nor a Nextion `.tft` has been uploaded to hardware.
 
 ## Flow conversion and PI control
@@ -33,6 +33,15 @@ non-blocking 5-second moving average. Raw Hz remains available only through
 The initial PI parameters are Kp=0.5 (normalised error) and Ti=100 s. See
 [`cat2/docs/FLOW_CALIBRATION.md`](cat2/docs/FLOW_CALIBRATION.md) and
 [`cat2/docs/PI_CONTROL.md`](cat2/docs/PI_CONTROL.md).
+
+## Nextion edit/apply behavior
+
+Fan power, gate position and flow setpoint use `-`, `+` and Apply buttons.
+Each press changes a pending Arduino value by 1% (fan/gate) or 1 L/min (flow)
+without moving an actuator or changing PI. Apply commits it. Each parameter has
+an independent non-blocking five-second timeout measured from its last press;
+expiry discards the pending value and restores the Text field. In AUTO, a fan
+Apply stores the next MANUAL setting but cannot override PI PWM.
 
 ## Documentation
 

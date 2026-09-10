@@ -38,6 +38,46 @@ inline float hybridFrequency(uint32_t deltaPulses, uint32_t windowUs, uint32_t l
 inline bool intervalElapsed(uint32_t now, uint32_t previous, uint32_t intervalMs) {
   return (uint32_t)(now-previous) >= intervalMs;
 }
+struct PendingApplyState {
+  float applied, pending;
+  bool editing;
+  uint32_t lastEditMs;
+};
+inline float clampValue(float value, float minimum, float maximum) {
+  return value < minimum ? minimum : (value > maximum ? maximum : value);
+}
+inline void pendingApplyInitialize(PendingApplyState &state, float value) {
+  state.applied=value;
+  state.pending=value;
+  state.editing=false;
+  state.lastEditMs=0;
+}
+inline void pendingApplyAdjust(PendingApplyState &state, int8_t direction, float step,
+                               float minimum, float maximum, uint32_t now) {
+  if (!state.editing) state.pending=state.applied;
+  state.pending=clampValue(state.pending+(direction < 0 ? -step : step),minimum,maximum);
+  state.editing=true;
+  state.lastEditMs=now;
+}
+inline bool pendingApplyTimedOut(PendingApplyState &state, uint32_t now, uint32_t timeoutMs) {
+  if (!state.editing || !intervalElapsed(now,state.lastEditMs,timeoutMs)) return false;
+  state.pending=state.applied;
+  state.editing=false;
+  return true;
+}
+inline bool pendingApplyCommit(PendingApplyState &state) {
+  if (!state.editing) return false;
+  state.applied=state.pending;
+  state.editing=false;
+  return true;
+}
+inline uint32_t pendingApplyAgeMs(const PendingApplyState &state, uint32_t now) {
+  return state.editing ? (uint32_t)(now-state.lastEditMs) : 0;
+}
+inline uint32_t pendingApplyRemainingMs(const PendingApplyState &state, uint32_t now, uint32_t timeoutMs) {
+  const uint32_t age=pendingApplyAgeMs(state,now);
+  return state.editing && age<timeoutMs ? timeoutMs-age : 0;
+}
 inline bool averageOfValid(bool firstValid, float first, bool secondValid, float second, float &result) {
   if (!firstValid && !secondValid) { result=NAN; return false; }
   if (firstValid && secondValid) result=(first+second)*0.5f;

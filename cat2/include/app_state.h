@@ -1,5 +1,6 @@
 #pragma once
 #include <Arduino.h>
+#include "pure_logic.h"
 
 enum FlowControlMode : uint8_t { FLOW_MANUAL, FLOW_AUTO };
 enum FlowFeedbackSource : uint8_t { FLOW_SENSOR_1, FLOW_SENSOR_2, FLOW_AVERAGE_OF_VALID };
@@ -21,6 +22,7 @@ struct AppState {
   float requestedFanPowerPercent, appliedFanPowerPercent;
   float gatePercent; uint8_t gateAngle;
   FlowControlMode flowControlMode; float flowSetpointLpm;
+  PendingApplyState ventPowerEdit, gateEdit, flowSetpointEdit;
   bool timerRunning; uint32_t timerElapsedMs;
   ValueState outletTemperature, skinTemperature[2];
   FlowState flow[2]; TofState tof[2];
@@ -32,9 +34,17 @@ void appStateBegin();
 void setCompressor(bool on);
 void setVentEnabled(bool on);
 void setFanPowerPercent(float percent);
+void setAutomaticFanPowerPercent(float percent);
 void setGatePercent(float percent);
 bool setFlowControlMode(FlowControlMode mode);
 bool setFlowSetpointLpm(float lpm);
+void editVentPower(int8_t direction, uint32_t now);
+void editGate(int8_t direction, uint32_t now);
+void editFlowSetpoint(int8_t direction, uint32_t now);
+bool applyVentPowerEdit();
+bool applyGateEdit();
+bool applyFlowSetpointEdit();
+void appStateService(uint32_t now);
 void stopAutoForSafety(const char *reason);
 void setFlowFeedbackSource(FlowFeedbackSource source);
 FlowFeedbackSource getFlowFeedbackSource();

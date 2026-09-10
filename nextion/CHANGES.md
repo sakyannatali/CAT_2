@@ -1,37 +1,27 @@
-# Required Nextion Editor changes
+# Current HMI protocol
 
-`ui.HMI`, `Basic.zi`, and `Russian.zi` are binary Nextion assets. No editable project representation or Nextion Editor was available, so they were deliberately not text-edited and no fictitious `.tft` was created.
+`ui_final.HMI` is maintained manually in Nextion Editor and is intentionally not edited by this firmware task. The firmware expects the existing Text and button component names listed in [COMPONENT_MAP.md](COMPONENT_MAP.md).
 
-Open `nextion/ui.HMI` in Nextion Editor. Retain the current baud rate at 9600. Convert the listed display fields to **Text** components (the firmware writes `<name>.txt`, never rounded numeric `.val`). Use a font containing the required Cyrillic glyphs; `Russian.zi` is present in the repository.
+Touch Release events must send exactly these packets:
 
-| Visible purpose | Component name | Required text / range |
-|---|---|---|
-| Outlet temperature | `fTIn` | Relabel “Температура на выходе”; text |
-| Flow 1 / 2 | `fVolume1`, `fVolume2` | text; Hz before calibration, кг/ч after |
-| Skin temperature 1 / 2 | `fTSkin1`, `fTSkin2` | text |
-| Distance 1 / 2 | `fLSkin1`, `fLSkin2` | text |
-| Compressor / vent state | `fCompStatus`, `fVentStatus` | new Text |
-| Applied fan power / gate | `fVentPower`, `fGate` | new Text |
-| Timer / mode / setpoint / PI output | `fTimer`, `fMode`, `fSetpoint`, `fPiOutput` | new Text |
-| Error | `fError` | new Text |
-| Fan slider / gate slider | `sVentSpeed`, `sGate` | keep numeric, range 0–100 |
-| AUTO controls | `bManual`, `bAuto`, `nFlowSetpoint` | new buttons; Number range 0–65535 |
+| Trigger | Action | `printh` |
+|---:|---|---|
+| `0x00` | compressor ON | `printh 23 02 54 00` |
+| `0x01` | compressor OFF | `printh 23 02 54 01` |
+| `0x02` | vent ON | `printh 23 02 54 02` |
+| `0x03` | vent OFF | `printh 23 02 54 03` |
+| `0x04` | apply fan pending value | `printh 23 02 54 04` |
+| `0x05` | apply gate pending value | `printh 23 02 54 05` |
+| `0x06` | timer start/pause | `printh 23 02 54 06` |
+| `0x07` | timer reset | `printh 23 02 54 07` |
+| `0x08` | MANUAL | `printh 23 02 54 08` |
+| `0x09` | AUTO | `printh 23 02 54 09` |
+| `0x0A` | apply flow pending value | `printh 23 02 54 0A` |
+| `0x0B` | fan -1% | `printh 23 02 54 0B` |
+| `0x0C` | fan +1% | `printh 23 02 54 0C` |
+| `0x0D` | gate -1% | `printh 23 02 54 0D` |
+| `0x0E` | gate +1% | `printh 23 02 54 0E` |
+| `0x0F` | flow -1 L/min | `printh 23 02 54 0F` |
+| `0x10` | flow +1 L/min | `printh 23 02 54 10` |
 
-Remove the “Холодильная машина” section and its values. In the air circuit remove “temperature at inlet”; retain only outlet temperature, both flows, skin temperatures 1/2, and distances 1/2. Add the new status, setpoint, PI-output, timer, mode, and error text fields.
-
-For **Touch Release** events, preserve the existing protocol exactly:
-
-| Action | Nextion event command |
-|---|---|
-| Compressor on / off | `printh 23 02 54 00` / `printh 23 02 54 01` |
-| Vent on / off | `printh 23 02 54 02` / `printh 23 02 54 03` |
-| Fan slider changed | `printh 23 02 54 04` |
-| Gate slider changed | `printh 23 02 54 05` |
-| Timer start/pause | `printh 23 02 54 06` |
-| Timer reset | `printh 23 02 54 07` |
-| MANUAL / AUTO | `printh 23 02 54 08` / `printh 23 02 54 09` |
-| Flow setpoint changed | `printh 23 02 54 0A` |
-
-The firmware requests `sVentSpeed.val` or `sGate.val` itself after the matching trigger, so the current button/slider protocol remains compatible and performs no direct PWM, relay, or servo operation in the UI layer.
-
-Compile the HMI in Nextion Editor, verify all component names, then use the editor's Compile output `.tft`. Do not copy it to hardware or flash the display without separate authorisation.
+Do not add `cov`, `+=`, a slider or a Number component for these three values. The HMI must not change Text values itself. On boot, Arduino pushes every Text field so retained HMI values are never treated as state. This repository does not compile, produce or upload a `.tft` file.

@@ -11,4 +11,4 @@
 #include "serial_console.h"
 
 void setup(){serialConsoleBegin();appStateBegin();actuatorsBegin();timerServiceBegin(millis());i2cMuxBegin();temperatureSensorsBegin();tofSensorsBegin();flowMeterBegin();piControllerBegin();nextionUiBegin();Serial.println(F("CAT2 PlatformIO firmware ready"));}
-void loop(){const uint32_t now=millis();serialConsoleService();timerServiceTick(now);flowMeterService(now);temperatureSensorsService(now);tofSensorsService(now);piControllerService(now);nextionUiService(now);}
+void loop(){const uint32_t now=millis();serialConsoleService();appStateService(now);timerServiceTick(now);flowMeterService(now);temperatureSensorsService(now);tofSensorsService(now);piControllerService(now);nextionUiService(now);}

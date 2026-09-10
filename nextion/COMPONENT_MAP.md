@@ -1,14 +1,21 @@
-# Nextion-to-firmware map
+# Current Nextion-to-firmware map
 
-| Purpose | Nextion component | Firmware owner |
+The Nextion HMI is display and button hardware only. It never owns a real actuator value or PI setpoint. Arduino is the single source of truth for each applied value, pending edit value, editing flag and independent edit timestamp.
+
+| Purpose | Nextion component(s) | Firmware owner |
 |---|---|---|
-| Compressor state/action | `fCompStatus`, trigger 0/1 | `setCompressor()` / `app_state.cpp` |
-| Vent state/action | `fVentStatus`, trigger 2/3 | `setVentEnabled()` / `app_state.cpp` |
-| Fan slider/output | `sVentSpeed`, `fVentPower`, trigger 4 | `setFanPowerPercent()` / `actuators.cpp` |
-| Gate slider/output | `sGate`, `fGate`, trigger 5 | `setGatePercent()` / `actuators.cpp` |
-| Timer | `fTimer`, trigger 6/7 | `timer_service.cpp` |
+| Compressor | `fCompStatus`, `bCompOn`, `bCompOff` | `setCompressor()` |
+| Vent relay | `fVentStatus`, `bVentOn`, `bVentOff` | `setVentEnabled()` |
+| Mode | `fMode`, `fModeStatus`, `bAuto`, `bManual` | `setFlowControlMode()` |
+| Manual fan edit | `bVentMinus`, `tVentSet`, `bVentPlus`, `bVentApply` | `ventPowerEdit`, `applyVentPowerEdit()` |
+| Gate edit | `bGateMinus`, `tGateSet`, `bGatePlus`, `bGateApply` | `gateEdit`, `applyGateEdit()` |
+| Flow-setpoint edit | `bFlowMinus`, `tFlowSet`, `bFlowPlus`, `bFlowApply` | `flowSetpointEdit`, `applyFlowSetpointEdit()` |
+| Applied PI setpoint/output | `fSetpoint`, `fPiOutput`, `fError` | `flowSetpointLpm`, PI controller |
+| Timer | `fTimer`, `bTimerStart`, `bTimerReset` | `timer_service.cpp` |
 | Temperatures | `fTIn`, `fTSkin1`, `fTSkin2` | `temperature_sensors.cpp` |
-| Flows | `fVolume1`, `fVolume2` | `flow_meter.cpp` |
+| Flow display | `fVolume1`, `fVolume2` | `flow_meter.cpp` |
 | Distances | `fLSkin1`, `fLSkin2` | `tof_sensors.cpp` |
-| AUTO values/errors | `fMode`, `fSetpoint`, `fPiOutput`, `fError` | `pi_controller.cpp` |
-| AUTO controls | `bManual`, `bAuto`, `nFlowSetpoint`, triggers 8/9/10 | `setFlowControlMode()` / `setFlowSetpointKgH()` |
+
+`+`/`-` sends one trigger to Arduino. Arduino changes only the pending value, updates the adjacent Text field, and restarts that parameter's own five-second timeout. Apply commits pending to applied. Five seconds without Apply cancels the pending edit and restores the Text field to the applied value.
+
+There are no sliders, hidden Number components, `.val` reads, or `get` commands for fan power, gate or flow setpoint. In AUTO, fan Apply only stores the future MANUAL fan value; PWM remains PI-controlled.

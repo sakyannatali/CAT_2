@@ -1,6 +1,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include "serial_console.h"
+#include "config.h"
 #include "app_state.h"
 #include "flow_meter.h"
 #include "i2c_mux.h"
@@ -17,12 +18,23 @@ static void help() {
   Serial.println(F("control manual|auto|setpoint <L/min>|kp <v>|ti <s>|source 1|2|avg|status, debug off|sensors|all"));
 }
 static bool number(const char *s,float &v) { if(!s||!*s)return false; char *end; v=(float)strtod(s,&end); return *end==0; }
+static void printEditState(const __FlashStringHelper *name,const PendingApplyState &state,const __FlashStringHelper *unit) {
+  const uint32_t now=millis();
+  Serial.print(name); Serial.print(F(": applied=")); Serial.print(state.applied,1); Serial.print(unit);
+  Serial.print(F(" pending=")); Serial.print(state.pending,1); Serial.print(unit);
+  Serial.print(F(" editing=")); Serial.print(state.editing?F("yes"):F("no"));
+  if(state.editing) { Serial.print(F(" age_ms=")); Serial.print(pendingApplyAgeMs(state,now)); Serial.print(F(" remaining_ms=")); Serial.print(pendingApplyRemainingMs(state,now,EDIT_APPLY_TIMEOUT_MS)); }
+  Serial.println();
+}
 
 void serialConsolePrintStatus() {
   Serial.print(F("actuators: compressor=")); Serial.print(app.compressorOn?F("ON"):F("OFF"));
   Serial.print(F(" vent=")); Serial.print(app.ventRelayOn?F("ON"):F("OFF"));
   Serial.print(F(" fan requested/applied=")); Serial.print(app.requestedFanPowerPercent,1); Serial.print('/'); Serial.print(app.appliedFanPowerPercent,1);
   Serial.print(F(" gate=")); Serial.print(app.gatePercent,1); Serial.print(F("% angle=")); Serial.println(app.gateAngle);
+  printEditState(F("Vent manual"),app.ventPowerEdit,F("%"));
+  printEditState(F("Gate"),app.gateEdit,F("%"));
+  printEditState(F("Flow setpoint"),app.flowSetpointEdit,F(" L/min"));
   temperatureSensorsPrintStatus(); flowMeterPrintStatus(false); tofSensorsPrintStatus();
   char timer[16]; timerServiceFormat(timer,sizeof(timer));
   Serial.print(F("timer=")); Serial.print(timer); Serial.print(F(" flow_conversion="));

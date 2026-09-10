@@ -33,6 +33,7 @@ static const uint32_t FLOW_DISPLAY_UPDATE_MS = 5000UL;
 static const uint32_t FLOW_OUTLET_TEMPERATURE_HOLD_MS = 30000UL;
 static const float FLOW_SETPOINT_MIN_LPM = 0.0f;
 static const float FLOW_SETPOINT_MAX_LPM = 100.0f;
+static const uint32_t EDIT_APPLY_TIMEOUT_MS = 5000UL;
 
 static const uint8_t I2C_MUX_ADDRESS = 0x70;
 static const uint32_t I2C_CLOCK_HZ = 50000UL;

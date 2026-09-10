@@ -75,11 +75,79 @@ void test_timer_and_format() {
   char labelled[24]; snprintf(labelled,sizeof(labelled),"%s L/min",d);
   TEST_ASSERT_TRUE(strstr(labelled,"23,1")!=0);
 }
+void test_pending_adjust_and_bounds() {
+  PendingApplyState vent;
+  pendingApplyInitialize(vent,40.0f);
+  pendingApplyAdjust(vent,1,1.0f,0.0f,100.0f,100);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,40.0f,vent.applied);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,41.0f,vent.pending);
+  for(uint8_t i=0;i<4;++i) pendingApplyAdjust(vent,1,1.0f,0.0f,100.0f,101+i);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,45.0f,vent.pending);
+  pendingApplyInitialize(vent,100.0f);
+  pendingApplyAdjust(vent,1,1.0f,0.0f,100.0f,200);
+  TEST_ASSERT_EQUAL_FLOAT(100.0f,vent.pending);
+  pendingApplyInitialize(vent,0.0f);
+  pendingApplyAdjust(vent,-1,1.0f,0.0f,100.0f,200);
+  TEST_ASSERT_EQUAL_FLOAT(0.0f,vent.pending);
+}
+void test_pending_timeout_uses_last_press() {
+  PendingApplyState state;
+  pendingApplyInitialize(state,40.0f);
+  pendingApplyAdjust(state,1,1.0f,0.0f,100.0f,0);
+  pendingApplyAdjust(state,1,1.0f,0.0f,100.0f,4000);
+  TEST_ASSERT_FALSE(pendingApplyTimedOut(state,8999,5000));
+  TEST_ASSERT_TRUE(state.editing);
+  TEST_ASSERT_TRUE(pendingApplyTimedOut(state,9000,5000));
+  TEST_ASSERT_FALSE(state.editing);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,40.0f,state.pending);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,40.0f,state.applied);
+}
+void test_pending_apply_and_expired_apply() {
+  PendingApplyState state;
+  pendingApplyInitialize(state,40.0f);
+  pendingApplyAdjust(state,1,1.0f,0.0f,100.0f,0);
+  pendingApplyAdjust(state,1,1.0f,0.0f,100.0f,1);
+  TEST_ASSERT_TRUE(pendingApplyCommit(state));
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,42.0f,state.applied);
+  TEST_ASSERT_FALSE(state.editing);
+  TEST_ASSERT_FALSE(pendingApplyTimedOut(state,10000,5000));
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,42.0f,state.applied);
+  pendingApplyAdjust(state,1,1.0f,0.0f,100.0f,11000);
+  TEST_ASSERT_TRUE(pendingApplyTimedOut(state,16000,5000));
+  TEST_ASSERT_FALSE(pendingApplyCommit(state));
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,42.0f,state.applied);
+}
+void test_pending_parameters_are_independent() {
+  PendingApplyState vent,gate,flow;
+  pendingApplyInitialize(vent,20.0f);
+  pendingApplyInitialize(gate,30.0f);
+  pendingApplyInitialize(flow,15.0f);
+  pendingApplyAdjust(vent,1,1.0f,0.0f,100.0f,0);
+  pendingApplyAdjust(gate,-1,1.0f,0.0f,100.0f,1000);
+  pendingApplyAdjust(flow,1,1.0f,0.0f,100.0f,2000);
+  TEST_ASSERT_TRUE(pendingApplyTimedOut(vent,5000,5000));
+  TEST_ASSERT_FALSE(pendingApplyTimedOut(gate,5000,5000));
+  TEST_ASSERT_FALSE(pendingApplyTimedOut(flow,5000,5000));
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,15.0f,flow.applied); // PI must keep this until Apply.
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,16.0f,flow.pending);
+  TEST_ASSERT_TRUE(pendingApplyCommit(flow));
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,16.0f,flow.applied);
+}
+void test_pending_timeout_wraparound() {
+  PendingApplyState state;
+  pendingApplyInitialize(state,10.0f);
+  pendingApplyAdjust(state,1,1.0f,0.0f,100.0f,0xFFFFFFF0UL);
+  TEST_ASSERT_FALSE(pendingApplyTimedOut(state,0x00001377UL,5000));
+  TEST_ASSERT_TRUE(pendingApplyTimedOut(state,0x00001378UL,5000));
+}
 int main(int,char**) {
   UNITY_BEGIN();
   RUN_TEST(test_frequency); RUN_TEST(test_low_frequency_and_zero_timeout);
   RUN_TEST(test_experimental_flow_formulas); RUN_TEST(test_density_table);
   RUN_TEST(test_five_second_moving_average); RUN_TEST(test_display_interval_and_feedback_selection);
   RUN_TEST(test_pi); RUN_TEST(test_timer_and_format);
+  RUN_TEST(test_pending_adjust_and_bounds); RUN_TEST(test_pending_timeout_uses_last_press);
+  RUN_TEST(test_pending_apply_and_expired_apply); RUN_TEST(test_pending_parameters_are_independent);
+  RUN_TEST(test_pending_timeout_wraparound);
   return UNITY_END();
 }

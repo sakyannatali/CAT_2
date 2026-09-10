@@ -4,18 +4,13 @@ Use the 9600-baud monitor. Commands are bounded to 95 characters.
 
 | Command | Result |
 |---|---|
-| `status` | Actuators, temperatures, both flows, ToF, timer and PI state |
-| `flow` / `flow raw` | Pulses, raw Hz, pulse age, instant/filtered/display L/min, temperature, density factor, zero-flow and validity |
-| `flow density` | `rho24`, outlet temperature used, `rhoOut`, correction and validity |
-| `flow reset` | Reset counters and 5-second filters |
-| `control manual\|auto` | Choose the control mode |
-| `control setpoint <L/min>` | Set target in the inclusive range 0…100 L/min |
-| `control kp <value>`, `control ti <s>` | Change PI parameters for this boot |
-| `control source 1\|2\|avg`, `control status` | Feedback source/status |
-| `timer start\|pause\|reset\|status` | Arduino timer state |
-| `i2c scan`, `i2c mux` | Raw bus or PCA9547 channel scan |
-| `tof on\|off\|scan\|status\|read` | ToF diagnosis |
-| `debug off\|sensors\|all` | Controlled periodic diagnostics |
+| `status` | Actuators, sensor states, timer, and all applied/pending edit values |
+| `flow`, `flow raw`, `flow density`, `flow reset` | Flow frequency, L/min conversion, density and counters |
+| `control manual\|auto` | Select actual mode |
+| `control setpoint <L/min>` | Immediately set an applied setpoint from Serial, range 0…100 |
+| `control source 1\|2\|avg`, `control status` | Feedback, PI terms, applied setpoint and flow pending state |
+| `control kp <value>`, `control ti <s>` | PI tuning for this boot |
+| `timer start\|pause\|reset\|status` | Arduino timer |
+| `i2c scan`, `i2c mux`, `tof …` | Bus and ToF diagnosis |
 
-`flow raw` leaves the user interface untouched; raw Hz is diagnostic-only.
-The normal UI receives only the 5-second filtered L/min display value.
+`status` reports three independent edit records: applied, pending, editing, age and remaining time. The five-second timeout is calculated from each parameter's most recent `+`/`-` event. Expiry discards pending data; Apply when not editing is deliberately a no-op.
