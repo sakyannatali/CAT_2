@@ -19,9 +19,9 @@ Touch Release events must send exactly these packets:
 | `0x0A` | apply flow pending value | `printh 23 02 54 0A` |
 | `0x0B` | fan -1% | `printh 23 02 54 0B` |
 | `0x0C` | fan +1% | `printh 23 02 54 0C` |
-| `0x0D` | gate -1% | `printh 23 02 54 0D` |
-| `0x0E` | gate +1% | `printh 23 02 54 0E` |
-| `0x0F` | flow -1 L/min | `printh 23 02 54 0F` |
-| `0x10` | flow +1 L/min | `printh 23 02 54 10` |
+| `0x0D` | gate -10% (signed command) | `printh 23 02 54 0D` |
+| `0x0E` | gate +10% (signed command) | `printh 23 02 54 0E` |
+| `0x0F` | flow -5 L/min | `printh 23 02 54 0F` |
+| `0x10` | flow +5 L/min | `printh 23 02 54 10` |
 
 Do not add `cov`, `+=`, a slider or a Number component for these three values. The HMI must not change Text values itself. On boot, Arduino pushes every Text field so retained HMI values are never treated as state. This repository does not compile, produce or upload a `.tft` file.

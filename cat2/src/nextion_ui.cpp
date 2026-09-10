@@ -35,6 +35,11 @@ static void sendText(UiField &field,const char *value) {
 static void formatWholePercent(float value,char *out,size_t size) {
   snprintf(out,size,"%u%%",(unsigned)(clampValue(value,0.0f,100.0f)+0.5f));
 }
+static void formatSignedPercent(float value,char *out,size_t size) {
+  const int command=(int)clampValue(value,GATE_COMMAND_MIN_PERCENT,GATE_COMMAND_MAX_PERCENT);
+  if(command>0) snprintf(out,size,"+%d%%",command);
+  else snprintf(out,size,"%d%%",command);
+}
 static void formatWholeLpm(float value,char *out,size_t size) {
   snprintf(out,size,"%u л/мин",(unsigned)(clampValue(value,FLOW_SETPOINT_MIN_LPM,FLOW_SETPOINT_MAX_LPM)+0.5f));
 }
@@ -67,7 +72,7 @@ static void fieldValue(UiFieldIndex index,char *out,size_t size,uint32_t now) {
     case UI_COMPRESSOR: strcpy(out,app.compressorOn?"ON":"OFF"); break;
     case UI_VENT: strcpy(out,app.ventRelayOn?"ON":"OFF"); break;
     case UI_VENT_SET: formatWholePercent(app.ventPowerEdit.editing?app.ventPowerEdit.pending:app.ventPowerEdit.applied,out,size); break;
-    case UI_GATE_SET: formatWholePercent(app.gateEdit.editing?app.gateEdit.pending:app.gateEdit.applied,out,size); break;
+    case UI_GATE_SET: formatSignedPercent(app.gateEdit.editing?app.gateEdit.pending:app.gateEdit.applied,out,size); break;
     case UI_FLOW_SET: formatWholeLpm(app.flowSetpointEdit.editing?app.flowSetpointEdit.pending:app.flowSetpointEdit.applied,out,size); break;
     case UI_TIMER: timerServiceFormat(out,size); break;
     case UI_MODE: case UI_MODE_STATUS: strcpy(out,app.flowControlMode==FLOW_AUTO?"AUTO":"MANUAL"); break;

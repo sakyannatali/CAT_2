@@ -3,5 +3,5 @@
 void actuatorsBegin();
 void actuatorsApplyCompressor(bool on);
 void actuatorsApplyVent(bool on);
-void actuatorsApplyFan(float appliedPercent);
+uint8_t actuatorsApplyFan(float appliedPercent);
 void actuatorsApplyGate(uint8_t angle);

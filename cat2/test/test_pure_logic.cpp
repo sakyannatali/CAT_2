@@ -45,16 +45,10 @@ void test_five_second_moving_average() {
   average.clear(); average.add(20.0f,0); average.add(0.0f,500);
   TEST_ASSERT_FLOAT_WITHIN(0.001f,10.0f,average.value(500,5000,&n));
 }
-void test_display_interval_and_feedback_selection() {
+void test_display_interval() {
   TEST_ASSERT_FALSE(intervalElapsed(4999,0,5000));
   TEST_ASSERT_TRUE(intervalElapsed(5000,0,5000));
   TEST_ASSERT_TRUE(intervalElapsed(0x00000010UL,0xFFFFFFF0UL,32));
-  float feedback;
-  TEST_ASSERT_TRUE(averageOfValid(true,12.0f,false,0.0f,feedback));
-  TEST_ASSERT_FLOAT_WITHIN(0.001f,12.0f,feedback);
-  TEST_ASSERT_TRUE(averageOfValid(true,12.0f,true,18.0f,feedback));
-  TEST_ASSERT_FLOAT_WITHIN(0.001f,15.0f,feedback);
-  TEST_ASSERT_FALSE(averageOfValid(false,0.0f,false,0.0f,feedback));
 }
 void test_pi() {
   PiControllerCore pi;
@@ -67,6 +61,34 @@ void test_pi() {
   TEST_ASSERT_FLOAT_WITHIN(0.01f,42.0f,pi.output);
   const PiTerms after=pi.update(0.2f,1.0f,5.0f,20000.0f);
   TEST_ASSERT_FLOAT_WITHIN(0.1f,42.0f,after.requested);
+}
+void test_total_flow_feedback_and_pi_direction() {
+  float total=0.0f;
+  TEST_ASSERT_TRUE(totalFlowFromBothValid(true,90.0f,true,90.0f,total));
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,180.0f,total);
+  TEST_ASSERT_FALSE(totalFlowFromBothValid(true,90.0f,false,0.0f,total));
+  TEST_ASSERT_TRUE(normalizedFlowErrorPercent(30.0f,180.0f,1.0f)<0.0f);
+  TEST_ASSERT_TRUE(normalizedFlowErrorPercent(30.0f,20.0f,1.0f)>0.0f);
+  PiControllerCore pi;
+  pi.kp=0.5f; pi.tiSeconds=100.0f; pi.reset(50.0f); pi.makeBumpless(0.0f,50.0f);
+  const PiTerms decrease=pi.update(normalizedFlowErrorPercent(30.0f,180.0f,1.0f),1.0f,5.0f,2000000.0f);
+  TEST_ASSERT_TRUE(decrease.requested<50.0f);
+  pi.reset(50.0f); pi.makeBumpless(0.0f,50.0f);
+  const PiTerms increase=pi.update(normalizedFlowErrorPercent(30.0f,20.0f,1.0f),1.0f,5.0f,2000000.0f);
+  TEST_ASSERT_TRUE(increase.requested>50.0f);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,40.0f,activeFanCommandPercent(false,40.0f,70.0f));
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,70.0f,activeFanCommandPercent(true,40.0f,70.0f));
+}
+void test_manual_fan_apply_selects_a_new_pwm_command() {
+  PendingApplyState manual;
+  pendingApplyInitialize(manual,40.0f);
+  const uint8_t before=fanCommandToPwm(activeFanCommandPercent(false,manual.applied,0.0f),true);
+  pendingApplyAdjust(manual,1,1.0f,0.0f,100.0f,0);
+  TEST_ASSERT_TRUE(pendingApplyCommit(manual));
+  const uint8_t after=fanCommandToPwm(activeFanCommandPercent(false,manual.applied,0.0f),true);
+  TEST_ASSERT_NOT_EQUAL(before,after);
+  TEST_ASSERT_EQUAL_UINT8(148,fanCommandToPwm(42.0f,true));
+  TEST_ASSERT_EQUAL_UINT8(107,fanCommandToPwm(42.0f,false));
 }
 void test_timer_and_format() {
   char b[16]; formatElapsed(61000,b,sizeof(b)); TEST_ASSERT_EQUAL_STRING("01:01",b);
@@ -140,14 +162,53 @@ void test_pending_timeout_wraparound() {
   TEST_ASSERT_FALSE(pendingApplyTimedOut(state,0x00001377UL,5000));
   TEST_ASSERT_TRUE(pendingApplyTimedOut(state,0x00001378UL,5000));
 }
+void test_flow_and_gate_edit_steps() {
+  PendingApplyState flow,gate;
+  pendingApplyInitialize(flow,30.0f);
+  pendingApplyAdjust(flow,1,5.0f,0.0f,100.0f,0);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,35.0f,flow.pending);
+  pendingApplyAdjust(flow,-1,5.0f,0.0f,100.0f,1);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,30.0f,flow.pending);
+  pendingApplyInitialize(flow,98.0f);
+  pendingApplyAdjust(flow,1,5.0f,0.0f,100.0f,2);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,100.0f,flow.pending);
+  pendingApplyInitialize(gate,0.0f);
+  pendingApplyAdjust(gate,-1,10.0f,-100.0f,100.0f,0);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,-10.0f,gate.pending);
+  pendingApplyInitialize(gate,0.0f);
+  pendingApplyAdjust(gate,1,10.0f,-100.0f,100.0f,0);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,10.0f,gate.pending);
+  pendingApplyInitialize(gate,-100.0f);
+  pendingApplyAdjust(gate,-1,10.0f,-100.0f,100.0f,0);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,-100.0f,gate.pending);
+  pendingApplyInitialize(gate,100.0f);
+  pendingApplyAdjust(gate,1,10.0f,-100.0f,100.0f,0);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,100.0f,gate.pending);
+}
+void test_signed_gate_mapping_and_pending_apply() {
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,0.0f,signedGateToPhysicalPercent(-100.0f));
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,50.0f,signedGateToPhysicalPercent(0.0f));
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,100.0f,signedGateToPhysicalPercent(100.0f));
+  PendingApplyState gate;
+  pendingApplyInitialize(gate,0.0f);
+  pendingApplyAdjust(gate,-1,10.0f,-100.0f,100.0f,0);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,0.0f,gate.applied); // Servo stays at applied until commit.
+  TEST_ASSERT_TRUE(pendingApplyCommit(gate));
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,-10.0f,gate.applied);
+  pendingApplyAdjust(gate,1,10.0f,-100.0f,100.0f,100);
+  TEST_ASSERT_TRUE(pendingApplyTimedOut(gate,5100,5000));
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,-10.0f,gate.pending);
+}
 int main(int,char**) {
   UNITY_BEGIN();
   RUN_TEST(test_frequency); RUN_TEST(test_low_frequency_and_zero_timeout);
   RUN_TEST(test_experimental_flow_formulas); RUN_TEST(test_density_table);
-  RUN_TEST(test_five_second_moving_average); RUN_TEST(test_display_interval_and_feedback_selection);
-  RUN_TEST(test_pi); RUN_TEST(test_timer_and_format);
+  RUN_TEST(test_five_second_moving_average); RUN_TEST(test_display_interval);
+  RUN_TEST(test_pi); RUN_TEST(test_total_flow_feedback_and_pi_direction); RUN_TEST(test_timer_and_format);
+  RUN_TEST(test_manual_fan_apply_selects_a_new_pwm_command);
   RUN_TEST(test_pending_adjust_and_bounds); RUN_TEST(test_pending_timeout_uses_last_press);
   RUN_TEST(test_pending_apply_and_expired_apply); RUN_TEST(test_pending_parameters_are_independent);
   RUN_TEST(test_pending_timeout_wraparound);
+  RUN_TEST(test_flow_and_gate_edit_steps); RUN_TEST(test_signed_gate_mapping_and_pending_apply);
   return UNITY_END();
 }

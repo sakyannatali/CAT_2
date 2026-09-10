@@ -46,6 +46,31 @@ struct PendingApplyState {
 inline float clampValue(float value, float minimum, float maximum) {
   return value < minimum ? minimum : (value > maximum ? maximum : value);
 }
+inline float snapToStep(float value, float step, float minimum, float maximum) {
+  if (!(step > 0.0f)) return clampValue(value,minimum,maximum);
+  const float snapped=(float)((long)(value/step+(value>=0.0f?0.5f:-0.5f)))*step;
+  return clampValue(snapped,minimum,maximum);
+}
+inline float signedGateToPhysicalPercent(float signedPercent) {
+  return (clampValue(signedPercent,-100.0f,100.0f)+100.0f)*0.5f;
+}
+inline float activeFanCommandPercent(bool autoMode, float manualApplied, float piOutput) {
+  return autoMode ? clampValue(piOutput,0.0f,100.0f) : clampValue(manualApplied,0.0f,100.0f);
+}
+inline uint8_t fanCommandToPwm(float commandPercent, bool inverted) {
+  const uint8_t direct=(uint8_t)(clampValue(commandPercent,0.0f,100.0f)*255.0f/100.0f+0.5f);
+  return inverted ? (uint8_t)(255U-direct) : direct;
+}
+inline bool totalFlowFromBothValid(bool flow1Valid, float flow1Lpm, bool flow2Valid,
+                                   float flow2Lpm, float &totalLpm) {
+  if (!flow1Valid || !flow2Valid) { totalLpm=NAN; return false; }
+  totalLpm=flow1Lpm+flow2Lpm;
+  return true;
+}
+inline float normalizedFlowErrorPercent(float setpointLpm, float totalLpm, float minimumNormalizationLpm) {
+  const float normalization=setpointLpm>minimumNormalizationLpm ? setpointLpm : minimumNormalizationLpm;
+  return 100.0f*(setpointLpm-totalLpm)/normalization;
+}
 inline void pendingApplyInitialize(PendingApplyState &state, float value) {
   state.applied=value;
   state.pending=value;
@@ -54,7 +79,7 @@ inline void pendingApplyInitialize(PendingApplyState &state, float value) {
 }
 inline void pendingApplyAdjust(PendingApplyState &state, int8_t direction, float step,
                                float minimum, float maximum, uint32_t now) {
-  if (!state.editing) state.pending=state.applied;
+  if (!state.editing) state.pending=snapToStep(state.applied,step,minimum,maximum);
   state.pending=clampValue(state.pending+(direction < 0 ? -step : step),minimum,maximum);
   state.editing=true;
   state.lastEditMs=now;
@@ -78,13 +103,6 @@ inline uint32_t pendingApplyRemainingMs(const PendingApplyState &state, uint32_t
   const uint32_t age=pendingApplyAgeMs(state,now);
   return state.editing && age<timeoutMs ? timeoutMs-age : 0;
 }
-inline bool averageOfValid(bool firstValid, float first, bool secondValid, float second, float &result) {
-  if (!firstValid && !secondValid) { result=NAN; return false; }
-  if (firstValid && secondValid) result=(first+second)*0.5f;
-  else result=firstValid ? first : second;
-  return true;
-}
-
 template <uint8_t Capacity>
 class TimedMovingAverage {
  public:
@@ -101,7 +119,7 @@ class TimedMovingAverage {
   float values_[Capacity]; uint32_t times_[Capacity]; bool valid_[Capacity]; uint8_t count_, next_;
 };
 
-struct PiTerms { float error; float p; float i; float requested; };
+struct PiTerms { float error; float p; float i; float rawOutput; float requested; };
 class PiControllerCore {
  public:
   PiControllerCore() : kp(0.5f), tiSeconds(100.0f), integral(0), output(0) {}
@@ -112,7 +130,7 @@ class PiControllerCore {
     if(kp > 0.00001f && tiSeconds > 0.00001f) integral=(output/kp-normalizedError)*tiSeconds;
   }
   PiTerms update(float normalizedError, float dtSeconds, float maxStep, float integralLimit) {
-    PiTerms r={normalizedError, kp*normalizedError, kp*(integral/tiSeconds), output};
+    PiTerms r={normalizedError, kp*normalizedError, kp*(integral/tiSeconds), output, output};
     if(!(dtSeconds > 0.0f) || tiSeconds <= 0.0f || kp < 0.0f) return r;
     const float candidateIntegral=clampRange(integral + normalizedError*dtSeconds, -integralLimit, integralLimit);
     const float unslewed=kp*(normalizedError+candidateIntegral/tiSeconds);
@@ -120,8 +138,8 @@ class PiControllerCore {
     const bool low=unslewed<0.0f && normalizedError<0.0f;
     if(!high && !low) integral=candidateIntegral;
     r.p=kp*normalizedError; r.i=kp*(integral/tiSeconds);
-    const float target=clamp(r.p+r.i);
-    output=clampRange(target, output-maxStep, output+maxStep);
+    r.rawOutput=clamp(r.p+r.i);
+    output=clampRange(r.rawOutput, output-maxStep, output+maxStep);
     r.requested=output;
     return r;
   }

@@ -30,18 +30,23 @@ non-blocking 5-second moving average. Raw Hz remains available only through
 `flow raw` diagnostics; AUTO is no longer blocked by the obsolete
 `FLOW_CALIBRATED` flag.
 
-The initial PI parameters are Kp=0.5 (normalised error) and Ti=100 s. See
+AUTO uses the total of both filtered flow readings: `Flow 1 + Flow 2`. Both
+meters must be valid; loss of either one exits AUTO to MANUAL while retaining
+the current safe fan command. The initial PI parameters are Kp=0.5
+(normalised-percent error) and Ti=100 s. See
 [`cat2/docs/FLOW_CALIBRATION.md`](cat2/docs/FLOW_CALIBRATION.md) and
 [`cat2/docs/PI_CONTROL.md`](cat2/docs/PI_CONTROL.md).
 
 ## Nextion edit/apply behavior
 
 Fan power, gate position and flow setpoint use `-`, `+` and Apply buttons.
-Each press changes a pending Arduino value by 1% (fan/gate) or 1 L/min (flow)
-without moving an actuator or changing PI. Apply commits it. Each parameter has
-an independent non-blocking five-second timeout measured from its last press;
-expiry discards the pending value and restores the Text field. In AUTO, a fan
-Apply stores the next MANUAL setting but cannot override PI PWM.
+Each press changes only a pending Arduino value: 1% for fan power, 10% for the
+signed gate command, and 5 L/min for the flow setpoint. Gate command is
+`-100…+100%`; `0%` maps to the old physical midpoint (50%). Apply commits the
+value. Each parameter has an independent non-blocking five-second timeout
+measured from its last press; expiry discards the pending value and restores
+the Text field. In AUTO, a fan Apply stores the next MANUAL setting but cannot
+override PI PWM.
 
 ## Documentation
 

@@ -126,12 +126,10 @@ void flowMeterService(uint32_t now) {
 }
 
 const char *flowMeterAutoBlockReason() {
-  const FlowFeedbackSource source=getFlowFeedbackSource();
   const FlowState &a=app.flow[0], &b=app.flow[1];
-  if ((source==FLOW_SENSOR_1 && !a.densityValid) ||
-      (source==FLOW_SENSOR_2 && !b.densityValid) ||
-      (source==FLOW_AVERAGE_OF_VALID && !a.densityValid && !b.densityValid))
+  if (!a.densityValid || !b.densityValid)
     return densityOutOfRange ? "OUTLET TEMP OUT OF RANGE" : "OUTLET TEMP INVALID";
+  if (!a.valid || !b.valid) return "BOTH FLOW SENSORS REQUIRED";
   return "FLOW SENSOR FAULT";
 }
 
