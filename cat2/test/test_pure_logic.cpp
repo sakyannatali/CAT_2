@@ -89,6 +89,24 @@ void test_manual_fan_apply_selects_a_new_pwm_command() {
   TEST_ASSERT_NOT_EQUAL(before,after);
   TEST_ASSERT_EQUAL_UINT8(148,fanCommandToPwm(42.0f,true));
   TEST_ASSERT_EQUAL_UINT8(107,fanCommandToPwm(42.0f,false));
+  // AUTO deliberately selects the PI command even after the manual edit commits.
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,70.0f,activeFanCommandPercent(true,manual.applied,70.0f));
+  TEST_ASSERT_EQUAL_UINT8(76,fanCommandToPwm(activeFanCommandPercent(true,manual.applied,70.0f),true));
+}
+void test_bumpless_manual_auto_transitions() {
+  PiControllerCore pi;
+  pi.kp=0.5f; pi.tiSeconds=100.0f;
+  const float manualCommand=42.0f;
+  const float error=25.0f;
+  pi.makeBumpless(error,manualCommand);
+  const PiTerms firstAuto=pi.update(error,1.0f,5.0f,2000000.0f);
+  TEST_ASSERT_FLOAT_WITHIN(0.2f,manualCommand,firstAuto.requested);
+  TEST_ASSERT_FLOAT_WITHIN(0.2f,firstAuto.requested,
+                           activeFanCommandPercent(true,manualCommand,firstAuto.requested));
+  // AUTO -> MANUAL adopts the actual output, so selecting MANUAL cannot jump it.
+  const float adoptedManual=firstAuto.requested;
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,firstAuto.requested,
+                           activeFanCommandPercent(false,adoptedManual,0.0f));
 }
 void test_timer_and_format() {
   char b[16]; formatElapsed(61000,b,sizeof(b)); TEST_ASSERT_EQUAL_STRING("01:01",b);
@@ -172,6 +190,9 @@ void test_flow_and_gate_edit_steps() {
   pendingApplyInitialize(flow,98.0f);
   pendingApplyAdjust(flow,1,5.0f,0.0f,100.0f,2);
   TEST_ASSERT_FLOAT_WITHIN(0.001f,100.0f,flow.pending);
+  pendingApplyInitialize(flow,0.0f);
+  pendingApplyAdjust(flow,-1,5.0f,0.0f,100.0f,3);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,0.0f,flow.pending);
   pendingApplyInitialize(gate,0.0f);
   pendingApplyAdjust(gate,-1,10.0f,-100.0f,100.0f,0);
   TEST_ASSERT_FLOAT_WITHIN(0.001f,-10.0f,gate.pending);
@@ -195,6 +216,7 @@ void test_signed_gate_mapping_and_pending_apply() {
   TEST_ASSERT_FLOAT_WITHIN(0.001f,0.0f,gate.applied); // Servo stays at applied until commit.
   TEST_ASSERT_TRUE(pendingApplyCommit(gate));
   TEST_ASSERT_FLOAT_WITHIN(0.001f,-10.0f,gate.applied);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,45.0f,signedGateToPhysicalPercent(gate.applied));
   pendingApplyAdjust(gate,1,10.0f,-100.0f,100.0f,100);
   TEST_ASSERT_TRUE(pendingApplyTimedOut(gate,5100,5000));
   TEST_ASSERT_FLOAT_WITHIN(0.001f,-10.0f,gate.pending);
@@ -206,6 +228,7 @@ int main(int,char**) {
   RUN_TEST(test_five_second_moving_average); RUN_TEST(test_display_interval);
   RUN_TEST(test_pi); RUN_TEST(test_total_flow_feedback_and_pi_direction); RUN_TEST(test_timer_and_format);
   RUN_TEST(test_manual_fan_apply_selects_a_new_pwm_command);
+  RUN_TEST(test_bumpless_manual_auto_transitions);
   RUN_TEST(test_pending_adjust_and_bounds); RUN_TEST(test_pending_timeout_uses_last_press);
   RUN_TEST(test_pending_apply_and_expired_apply); RUN_TEST(test_pending_parameters_are_independent);
   RUN_TEST(test_pending_timeout_wraparound);
