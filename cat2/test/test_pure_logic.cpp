@@ -53,13 +53,13 @@ void test_display_interval() {
 void test_pi() {
   PiControllerCore pi;
   pi.kp=10; pi.tiSeconds=1; pi.reset(95);
-  for(int i=0;i<100;++i) pi.update(10,1,100,2);
+  for(int i=0;i<100;++i) pi.update(10,1,100,100,2);
   TEST_ASSERT_TRUE(pi.output<=100.0f);
   TEST_ASSERT_TRUE(pi.integral<=2.001f);
   pi.kp=0.5f; pi.tiSeconds=100.0f;
   pi.makeBumpless(0.2f,42.0f);
   TEST_ASSERT_FLOAT_WITHIN(0.01f,42.0f,pi.output);
-  const PiTerms after=pi.update(0.2f,1.0f,5.0f,20000.0f);
+  const PiTerms after=pi.update(0.2f,1.0f,5.0f,5.0f,20000.0f);
   TEST_ASSERT_FLOAT_WITHIN(0.1f,42.0f,after.requested);
 }
 void test_total_flow_feedback_and_pi_direction() {
@@ -71,13 +71,15 @@ void test_total_flow_feedback_and_pi_direction() {
   TEST_ASSERT_TRUE(normalizedFlowErrorPercent(30.0f,20.0f,1.0f)>0.0f);
   PiControllerCore pi;
   pi.kp=0.5f; pi.tiSeconds=100.0f; pi.reset(50.0f); pi.makeBumpless(0.0f,50.0f);
-  const PiTerms decrease=pi.update(normalizedFlowErrorPercent(30.0f,180.0f,1.0f),1.0f,5.0f,2000000.0f);
+  const PiTerms decrease=pi.update(normalizedFlowErrorPercent(30.0f,180.0f,1.0f),1.0f,10.0f,20.0f,2000000.0f);
   TEST_ASSERT_TRUE(decrease.requested<50.0f);
   pi.reset(50.0f); pi.makeBumpless(0.0f,50.0f);
-  const PiTerms increase=pi.update(normalizedFlowErrorPercent(30.0f,20.0f,1.0f),1.0f,5.0f,2000000.0f);
+  const PiTerms increase=pi.update(normalizedFlowErrorPercent(30.0f,20.0f,1.0f),1.0f,10.0f,20.0f,2000000.0f);
   TEST_ASSERT_TRUE(increase.requested>50.0f);
   TEST_ASSERT_FLOAT_WITHIN(0.001f,40.0f,activeFanCommandPercent(false,40.0f,70.0f));
   TEST_ASSERT_FLOAT_WITHIN(0.001f,70.0f,activeFanCommandPercent(true,40.0f,70.0f));
+  TEST_ASSERT_FALSE(fanSetpointUsesAutoLabel(false));
+  TEST_ASSERT_TRUE(fanSetpointUsesAutoLabel(true));
 }
 void test_manual_fan_apply_selects_a_new_pwm_command() {
   PendingApplyState manual;
@@ -99,7 +101,7 @@ void test_bumpless_manual_auto_transitions() {
   const float manualCommand=42.0f;
   const float error=25.0f;
   pi.makeBumpless(error,manualCommand);
-  const PiTerms firstAuto=pi.update(error,1.0f,5.0f,2000000.0f);
+  const PiTerms firstAuto=pi.update(error,1.0f,10.0f,20.0f,2000000.0f);
   TEST_ASSERT_FLOAT_WITHIN(0.2f,manualCommand,firstAuto.requested);
   TEST_ASSERT_FLOAT_WITHIN(0.2f,firstAuto.requested,
                            activeFanCommandPercent(true,manualCommand,firstAuto.requested));
@@ -107,6 +109,67 @@ void test_bumpless_manual_auto_transitions() {
   const float adoptedManual=firstAuto.requested;
   TEST_ASSERT_FLOAT_WITHIN(0.001f,firstAuto.requested,
                            activeFanCommandPercent(false,adoptedManual,0.0f));
+}
+void test_asymmetric_pi_rate_limiter() {
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,60.0f,rateLimitOutputAsymmetric(80.0f,0.0f,10.0f,20.0f,1.0f));
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,60.0f,rateLimitOutputAsymmetric(50.0f,100.0f,10.0f,20.0f,1.0f));
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,70.0f,rateLimitOutputAsymmetric(80.0f,0.0f,10.0f,20.0f,0.5f));
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,100.0f,rateLimitOutputAsymmetric(100.0f,150.0f,10.0f,20.0f,1.0f));
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,0.0f,rateLimitOutputAsymmetric(0.0f,-10.0f,10.0f,20.0f,1.0f));
+  PiControllerCore pi;
+  pi.kp=1.0f; pi.tiSeconds=1.0f; pi.reset(80.0f);
+  const PiTerms falling=pi.update(-1000.0f,1.0f,10.0f,20.0f,2000000.0f);
+  TEST_ASSERT_TRUE(falling.rawOutput<0.0f);
+  TEST_ASSERT_EQUAL_FLOAT(0.0f,falling.clampedOutput);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,60.0f,falling.requested);
+  pi.reset(50.0f);
+  const PiTerms rising=pi.update(1000.0f,1.0f,10.0f,20.0f,2000000.0f);
+  TEST_ASSERT_TRUE(rising.rawOutput>100.0f);
+  TEST_ASSERT_EQUAL_FLOAT(100.0f,rising.clampedOutput);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,60.0f,rising.requested);
+}
+void test_temperature_fault_state() {
+  TemperatureFaultState sensor;
+  temperatureStateInitialize(sensor);
+  TEST_ASSERT_FALSE(temperatureStateUsable(sensor,0,2500));
+  temperatureStateRecordSuccess(sensor,24.5f,100);
+  TEST_ASSERT_TRUE(temperatureStateUsable(sensor,200,2500));
+  temperatureStateRecordFailure(sensor,200,3,2500);
+  TEST_ASSERT_TRUE(sensor.valid);
+  TEST_ASSERT_FALSE(sensor.stale);
+  TEST_ASSERT_EQUAL_UINT8(1,sensor.failCount);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,24.5f,sensor.lastGoodValue);
+  temperatureStateRecordSuccess(sensor,25.0f,300);
+  TEST_ASSERT_EQUAL_UINT8(0,sensor.failCount);
+  temperatureStateRecordFailure(sensor,400,3,2500);
+  temperatureStateRecordFailure(sensor,500,3,2500);
+  temperatureStateRecordFailure(sensor,600,3,2500);
+  TEST_ASSERT_FALSE(sensor.valid);
+  TEST_ASSERT_TRUE(sensor.stale);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,25.0f,sensor.lastGoodValue);
+  temperatureStateRecordSuccess(sensor,26.0f,700);
+  TEST_ASSERT_TRUE(sensor.valid);
+  TEST_ASSERT_FALSE(sensor.stale);
+  TEST_ASSERT_EQUAL_UINT8(0,sensor.failCount);
+  temperatureStateRefresh(sensor,3200,2500);
+  TEST_ASSERT_TRUE(sensor.stale);
+  temperatureStateRecordSuccess(sensor,27.0f,0xFFFFFF00UL);
+  temperatureStateRefresh(sensor,0x00000900UL,2500);
+  TEST_ASSERT_TRUE(sensor.stale);
+}
+void test_temperature_auto_fallback_semantics() {
+  TemperatureFaultState sensor;
+  temperatureStateInitialize(sensor);
+  temperatureStateRecordSuccess(sensor,22.0f,0);
+  TEST_ASSERT_FALSE(autoRequiresTemperatureFallback(true,sensor,1000,2500));
+  temperatureStateRecordFailure(sensor,100,3,2500);
+  temperatureStateRecordFailure(sensor,200,3,2500);
+  temperatureStateRecordFailure(sensor,300,3,2500);
+  TEST_ASSERT_TRUE(autoRequiresTemperatureFallback(true,sensor,300,2500));
+  TEST_ASSERT_FALSE(autoRequiresTemperatureFallback(false,sensor,300,2500));
+  const float preservedManual=manualPowerAfterAutoFallback(42.0f);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,42.0f,preservedManual);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,42.0f,activeFanCommandPercent(false,preservedManual,0.0f));
 }
 void test_timer_and_format() {
   char b[16]; formatElapsed(61000,b,sizeof(b)); TEST_ASSERT_EQUAL_STRING("01:01",b);
@@ -229,6 +292,8 @@ int main(int,char**) {
   RUN_TEST(test_pi); RUN_TEST(test_total_flow_feedback_and_pi_direction); RUN_TEST(test_timer_and_format);
   RUN_TEST(test_manual_fan_apply_selects_a_new_pwm_command);
   RUN_TEST(test_bumpless_manual_auto_transitions);
+  RUN_TEST(test_asymmetric_pi_rate_limiter);
+  RUN_TEST(test_temperature_fault_state); RUN_TEST(test_temperature_auto_fallback_semantics);
   RUN_TEST(test_pending_adjust_and_bounds); RUN_TEST(test_pending_timeout_uses_last_press);
   RUN_TEST(test_pending_apply_and_expired_apply); RUN_TEST(test_pending_parameters_are_independent);
   RUN_TEST(test_pending_timeout_wraparound);

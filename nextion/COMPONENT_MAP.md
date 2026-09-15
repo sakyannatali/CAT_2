@@ -7,7 +7,7 @@ The Nextion HMI is display and button hardware only. It never owns a real actuat
 | Compressor | `fCompStatus`, `bCompOn`, `bCompOff` | `setCompressor()` |
 | Vent relay | `fVentStatus`, `bVentOn`, `bVentOff` | `setVentEnabled()` |
 | Mode | `fMode`, `fModeStatus`, `bAuto`, `bManual` | `setFlowControlMode()` |
-| Manual fan edit | `bVentMinus`, `tVentSet`, `bVentPlus`, `bVentApply` | `ventPowerEdit`, `applyVentPowerEdit()` |
+| Manual/AUTO fan indication | `bVentMinus`, `tVentSet`, `bVentPlus`, `bVentApply` | `ventPowerEdit`, `applyVentPowerEdit()` |
 | Gate edit | `bGateMinus`, `tGateSet`, `bGatePlus`, `bGateApply` | `gateEdit`, `applyGateEdit()` |
 | Flow-setpoint edit | `bFlowMinus`, `tFlowSet`, `bFlowPlus`, `bFlowApply` | `flowSetpointEdit`, `applyFlowSetpointEdit()` |
 | Applied PI setpoint/output | `fSetpoint`, `fPiOutput`, `fError` | `flowSetpointLpm`, PI controller |
@@ -25,4 +25,9 @@ pending edit and restores the Text field to the applied value. The signed gate
 command maps to the legacy physical scale as `(command + 100) / 2`, so `0%`
 is the old midpoint.
 
-There are no sliders, hidden Number components, `.val` reads, or `get` commands for fan power, gate or flow setpoint. In AUTO, fan Apply only stores the future MANUAL fan value; PWM remains PI-controlled by the sum of both valid flow meters.
+There are no sliders, hidden Number components, `.val` reads, or `get` commands for fan power, gate or flow setpoint. In AUTO, fan Apply cannot change PWM; PWM remains PI-controlled by the sum of both valid flow meters.
+
+In MANUAL, `tVentSet` is the manual applied/pending percentage such as `45%`.
+In AUTO it is always `AUTO`, making clear that PI owns PWM. On AUTO→MANUAL,
+Arduino adopts the actual PI fan output into both manual applied and pending
+values before writing the percentage back to `tVentSet`.

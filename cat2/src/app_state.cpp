@@ -32,7 +32,7 @@ static void applyGatePosition(float signedPercent) {
   actuatorsApplyGate(app.gateAngle);
 }
 static void adoptCurrentFanAsManual() {
-  app.requestedFanPowerPercent=app.appliedFanPowerPercent;
+  app.requestedFanPowerPercent=manualPowerAfterAutoFallback(app.appliedFanPowerPercent);
   pendingApplyInitialize(app.ventPowerEdit,app.requestedFanPowerPercent);
 }
 
@@ -52,14 +52,15 @@ void appStateBegin() {
   pendingApplyInitialize(app.flowSetpointEdit,0);
   app.timerRunning=false;
   app.timerElapsedMs=0;
-  app.outletTemperature={0,false,0};
+  temperatureStateInitialize(app.outletTemperature);
   for(uint8_t i=0;i<2;++i) {
-    app.skinTemperature[i]={0,false,0};
+    temperatureStateInitialize(app.skinTemperature[i]);
     app.flow[i]={0,0,0,0,NAN,NAN,NAN,NAN,NAN,false,true,false,FLOW_CONVERSION_CONFIGURED,false};
     app.tof[i]={255,0,0,0,false,false,false,false,false,0};
   }
   app.piOutputPercent=0;
   app.piRawOutputPercent=0;
+  app.piClampedOutputPercent=0;
   app.piError=app.piFlowErrorLpm=app.piP=app.piI=0;
   app.autoBlocked=false;
   app.autoBlockReason="";

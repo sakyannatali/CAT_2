@@ -30,7 +30,6 @@ static const bool FLOW_CONVERSION_CONFIGURED = true;
 static const uint32_t FLOW_FILTER_WINDOW_MS = 5000UL;
 static const uint32_t FLOW_FILTER_SAMPLE_INTERVAL_MS = 500UL;
 static const uint32_t FLOW_DISPLAY_UPDATE_MS = 5000UL;
-static const uint32_t FLOW_OUTLET_TEMPERATURE_HOLD_MS = 30000UL;
 static const float FLOW_SETPOINT_MIN_LPM = 0.0f;
 static const float FLOW_SETPOINT_MAX_LPM = 100.0f;
 static const uint32_t EDIT_APPLY_TIMEOUT_MS = 5000UL;
@@ -41,6 +40,7 @@ static const float GATE_COMMAND_EDIT_STEP_PERCENT = 10.0f;
 
 static const uint8_t I2C_MUX_ADDRESS = 0x70;
 static const uint32_t I2C_CLOCK_HZ = 50000UL;
+static const uint32_t I2C_WIRE_TIMEOUT_US = 50000UL;
 static const uint16_t I2C_MUX_SETTLE_US = 250;
 static const uint8_t I2C_CHANNEL_COUNT = 8;
 static const uint8_t TOF_SENSOR_COUNT = 2;
@@ -51,7 +51,9 @@ static const uint32_t TOF_REINIT_MS = 10000UL;
 
 static const uint8_t DS18B20_RESOLUTION = 12;
 static const uint32_t DS18B20_CONVERSION_MS = 800UL;
-static const uint32_t TEMPERATURE_STALE_MS = 5000UL;
+static const uint8_t TEMP_FAIL_COUNT_LIMIT = 3;
+static const uint32_t TEMP_STALE_TIMEOUT_MS = 2500UL;
+static const uint32_t TEMP_REINIT_INTERVAL_MS = 1000UL;
 static const uint32_t GY906_INTERVAL_MS = 500UL;
 
 // Set to 1 only after recompiling the HMI and moving its cable to Serial1.
@@ -67,7 +69,8 @@ static const uint32_t NEXTION_FULL_SYNC_MS = 1000UL;
 static const float PI_DEFAULT_KP = 0.5f;
 static const float PI_DEFAULT_TI_S = 100.0f;
 static const float PI_MIN_NORMALIZATION_LPM = 1.0f;
-static const float PI_MAX_OUTPUT_STEP_PER_S = 5.0f;
+static const float PI_OUTPUT_RISE_RATE_PERCENT_PER_SEC = 10.0f;
+static const float PI_OUTPUT_FALL_RATE_PERCENT_PER_SEC = 20.0f;
 // Error is expressed as normalized percent; this range preserves bumpless transfer.
 static const float PI_INTEGRAL_LIMIT = 2000000.0f;
 static const uint32_t PI_UPDATE_INTERVAL_MS = 1000UL;

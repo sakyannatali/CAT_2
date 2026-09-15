@@ -20,6 +20,7 @@ static UiField fields[UI_FIELD_COUNT]={
 static uint8_t cursor=0, packet[4], packetUsed=0, packetExpected=0;
 static const bool NEXTION_DEBUG=true;
 static bool lastVentEditing=false, lastGateEditing=false, lastFlowEditing=false;
+static bool lastAutoMode=false;
 
 static void endCommand() { NEXTION_SERIAL.write(0xFF); NEXTION_SERIAL.write(0xFF); NEXTION_SERIAL.write(0xFF); }
 static void sendText(UiField &field,const char *value) {
@@ -48,8 +49,8 @@ static void fieldValue(UiFieldIndex index,char *out,size_t size,uint32_t now) {
   out[0]=0;
   switch(index) {
     case UI_TIN:
-      if(app.outletTemperature.valid&&(uint32_t)(now-app.outletTemperature.updatedMs)<=TEMPERATURE_STALE_MS) { formatFixed1(app.outletTemperature.value,value,sizeof(value)); snprintf(out,size,"%s °C",value); }
-      else strcpy(out,"ERR");
+      if(temperatureStateUsable(app.outletTemperature,now,TEMP_STALE_TIMEOUT_MS)) { formatFixed1(app.outletTemperature.value,value,sizeof(value)); snprintf(out,size,"%s °C",value); }
+      else strcpy(out,"—");
       break;
     case UI_FLOW1: case UI_FLOW2: {
       const FlowState &flow=app.flow[index-UI_FLOW1];
@@ -58,9 +59,9 @@ static void fieldValue(UiFieldIndex index,char *out,size_t size,uint32_t now) {
       break;
     }
     case UI_SKIN1: case UI_SKIN2: {
-      const ValueState &temperature=app.skinTemperature[index==UI_SKIN1?0:1];
-      if(temperature.valid&&(uint32_t)(now-temperature.updatedMs)<=TEMPERATURE_STALE_MS) { formatFixed1(temperature.value,value,sizeof(value)); snprintf(out,size,"%s °C",value); }
-      else strcpy(out,"ERR");
+      const TemperatureFaultState &temperature=app.skinTemperature[index==UI_SKIN1?0:1];
+      if(temperatureStateUsable(temperature,now,TEMP_STALE_TIMEOUT_MS)) { formatFixed1(temperature.value,value,sizeof(value)); snprintf(out,size,"%s °C",value); }
+      else strcpy(out,"—");
       break;
     }
     case UI_DISTANCE1: case UI_DISTANCE2: {
@@ -71,15 +72,24 @@ static void fieldValue(UiFieldIndex index,char *out,size_t size,uint32_t now) {
     }
     case UI_COMPRESSOR: strcpy(out,app.compressorOn?"ON":"OFF"); break;
     case UI_VENT: strcpy(out,app.ventRelayOn?"ON":"OFF"); break;
-    case UI_VENT_SET: formatWholePercent(app.ventPowerEdit.editing?app.ventPowerEdit.pending:app.ventPowerEdit.applied,out,size); break;
+    case UI_VENT_SET:
+      if(fanSetpointUsesAutoLabel(app.flowControlMode==FLOW_AUTO))strcpy(out,"AUTO");
+      else formatWholePercent(app.ventPowerEdit.editing?app.ventPowerEdit.pending:app.ventPowerEdit.applied,out,size);
+      break;
     case UI_GATE_SET: formatSignedPercent(app.gateEdit.editing?app.gateEdit.pending:app.gateEdit.applied,out,size); break;
     case UI_FLOW_SET: formatWholeLpm(app.flowSetpointEdit.editing?app.flowSetpointEdit.pending:app.flowSetpointEdit.applied,out,size); break;
     case UI_TIMER: timerServiceFormat(out,size); break;
     case UI_MODE: case UI_MODE_STATUS: strcpy(out,app.flowControlMode==FLOW_AUTO?"AUTO":"MANUAL"); break;
     case UI_APPLIED_SETPOINT: formatFixed1(app.flowSetpointLpm,value,sizeof(value)); snprintf(out,size,"%s л/мин",value); break;
-    case UI_PI_OUTPUT: formatFixed1(app.piOutputPercent,value,sizeof(value)); snprintf(out,size,"%s%%",value); break;
+    case UI_PI_OUTPUT:
+      if(app.flowControlMode==FLOW_AUTO) { formatFixed1(app.appliedFanPowerPercent,value,sizeof(value)); snprintf(out,size,"%s%%",value); }
+      else strcpy(out,"—");
+      break;
     case UI_ERROR:
       if(app.autoBlocked) { strncpy(out,app.autoBlockReason,size-1); out[size-1]=0; }
+      else if(app.outletTemperature.stale) strcpy(out,"TEMP SENSOR STALE");
+      else if(app.skinTemperature[0].stale) strcpy(out,"GY906 1 STALE");
+      else if(app.skinTemperature[1].stale) strcpy(out,"GY906 2 STALE");
       else if(!app.flow[0].densityValid&&!app.flow[1].densityValid) { strncpy(out,flowMeterAutoBlockReason(),size-1); out[size-1]=0; }
       break;
     default: break;
@@ -109,8 +119,8 @@ static void handleTrigger(uint8_t id) {
     case 0x05: applyGateEdit(); updateGateSetText(now); break;
     case 0x06: timerServiceStartOrPause(now); updateField(UI_TIMER,now); break;
     case 0x07: timerServiceReset(now); updateField(UI_TIMER,now); break;
-    case 0x08: setFlowControlMode(FLOW_MANUAL); updateModeText(now); break;
-    case 0x09: setFlowControlMode(FLOW_AUTO); updateModeText(now); updateField(UI_ERROR,now); break;
+    case 0x08: setFlowControlMode(FLOW_MANUAL); updateModeText(now); updateVentSetText(now); break;
+    case 0x09: setFlowControlMode(FLOW_AUTO); updateModeText(now); updateVentSetText(now); updateField(UI_ERROR,now); break;
     case 0x0A: applyFlowSetpointEdit(); updateFlowSetText(now); updateAppliedFlowSetpointText(now); break;
     case 0x0B: editVentPower(-1,now); updateVentSetText(now); break;
     case 0x0C: editVentPower(1,now); updateVentSetText(now); break;
@@ -145,9 +155,17 @@ void nextionUiBegin() {
   lastVentEditing=app.ventPowerEdit.editing;
   lastGateEditing=app.gateEdit.editing;
   lastFlowEditing=app.flowSetpointEdit.editing;
+  lastAutoMode=app.flowControlMode==FLOW_AUTO;
 }
 void nextionUiService(uint32_t now) {
   processInput();
+  const bool autoMode=app.flowControlMode==FLOW_AUTO;
+  if(lastAutoMode!=autoMode) {
+    updateModeText(now);
+    updateVentSetText(now);
+    updateField(UI_ERROR,now);
+    lastAutoMode=autoMode;
+  }
   if(lastVentEditing!=app.ventPowerEdit.editing) { updateVentSetText(now); lastVentEditing=app.ventPowerEdit.editing; }
   if(lastGateEditing!=app.gateEdit.editing) { updateGateSetText(now); lastGateEditing=app.gateEdit.editing; }
   if(lastFlowEditing!=app.flowSetpointEdit.editing) { updateFlowSetText(now); lastFlowEditing=app.flowSetpointEdit.editing; }

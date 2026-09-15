@@ -3,7 +3,6 @@
 #include "pure_logic.h"
 
 enum FlowControlMode : uint8_t { FLOW_MANUAL, FLOW_AUTO };
-struct ValueState { float value; bool valid; uint32_t updatedMs; };
 struct FlowState {
   uint32_t totalPulses, lastPulsePeriodUs, lastPulseAgeMs;
   float frequencyHz, instantFlowLpm, filteredFlowLpm, displayFlowLpm;
@@ -23,9 +22,9 @@ struct AppState {
   FlowControlMode flowControlMode; float flowSetpointLpm;
   PendingApplyState ventPowerEdit, gateEdit, flowSetpointEdit;
   bool timerRunning; uint32_t timerElapsedMs;
-  ValueState outletTemperature, skinTemperature[2];
+  TemperatureFaultState outletTemperature, skinTemperature[2];
   FlowState flow[2]; TofState tof[2];
-  float piOutputPercent, piRawOutputPercent, piError, piFlowErrorLpm, piP, piI;
+  float piOutputPercent, piRawOutputPercent, piClampedOutputPercent, piError, piFlowErrorLpm, piP, piI;
   uint8_t fanPwmRaw;
   bool autoBlocked; const char *autoBlockReason;
 };

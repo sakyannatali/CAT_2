@@ -4,11 +4,11 @@ Use the 9600-baud monitor. Commands are bounded to 95 characters.
 
 | Command | Result |
 |---|---|
-| `status` | Actuators, sensor states, timer, and all applied/pending edit values |
+| `status` | Actuators, all applied/pending values, DS18B20/GY-906 health and I²C timeout/recovery counters |
 | `flow`, `flow raw`, `flow density`, `flow reset` | Flow frequency, L/min conversion, density and counters |
 | `control manual\|auto` | Select actual mode |
 | `control setpoint <L/min>` | Immediately set an applied setpoint from Serial, range 0…100 |
-| `control status` | Both filtered flows, their required total, setpoint, L/min and normalised error, P/I/raw/rate-limited PI outputs, manual fan applied/pending, actual command, raw PWM, relay, inversion and AUTO block reason |
+| `control status` | Both filtered flows, total, setpoint, error, P/I, raw/clamped/rate-limited PI outputs, actual command, density-temperature validity/age and AUTO block reason |
 | `control kp <value>`, `control ti <s>` | PI tuning for this boot |
 | `timer start\|pause\|reset\|status` | Arduino timer |
 | `i2c scan`, `i2c mux`, `tof …` | Bus and ToF diagnosis |
@@ -23,3 +23,12 @@ stored.
 AUTO never selects one meter or an average. It requires valid filtered values
 from both meters and uses their sum; per-meter feedback selection is not part
 of the command interface.
+
+Each temperature status line contains the last-good value, `valid`, `stale`,
+`fail_count`, age and last error. One or two failures retain the last-good
+value; `TEMP_FAIL_COUNT_LIMIT=3` failures or an age of
+`TEMP_STALE_TIMEOUT_MS=2500` makes the sensor stale. Recovery is attempted at
+most once per second. A stale outlet temperature produces `TEMP SENSOR STALE`,
+invalidates density correction and causes AUTO→MANUAL without changing the
+current fan command. The I²C summary reports timeout/recovery counts and the
+last PCA9547-ACK result.

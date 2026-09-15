@@ -25,16 +25,7 @@ static const uint16_t VL6180X_RESULT_RANGE_STATUS = 0x004D;
 static const uint16_t VL6180X_RESULT_INTERRUPT_STATUS_GPIO = 0x004F;
 static const uint16_t VL6180X_RESULT_RANGE_VAL = 0x0062;
 
-static void reportWireTimeout(const __FlashStringHelper *context){
-#if defined(WIRE_HAS_TIMEOUT)
-  if(Wire.getWireTimeoutFlag()){
-    Serial.print(F("I2C TIMEOUT recovered during "));Serial.println(context);
-    Wire.clearWireTimeoutFlag();
-  }
-#else
-  (void)context;
-#endif
-}
+static bool reportWireTimeout(const __FlashStringHelper *context){return i2cMuxWireTimedOut(context);}
 
 static void resetSlot(uint8_t slot){app.tof[slot]={255,0,0,0,false,false,false,false,false,0};readFailures[slot]=0;runtimeDisabled[slot]=true;}
 
@@ -44,18 +35,18 @@ static bool writeReg8(uint16_t reg,uint8_t value){
   Wire.write((uint8_t)(reg&0xFF));
   Wire.write(value);
   const bool ok=Wire.endTransmission()==0;
-  reportWireTimeout(F("VL6180X write"));
-  return ok;
+  return ok&&!reportWireTimeout(F("VL6180X write"));
 }
 static bool readReg8(uint16_t reg,uint8_t &value){
   Wire.beginTransmission(0x29);
   Wire.write((uint8_t)(reg>>8));
   Wire.write((uint8_t)(reg&0xFF));
-  if(Wire.endTransmission(false)!=0){reportWireTimeout(F("VL6180X register select"));return false;}
-  if(Wire.requestFrom((uint8_t)0x29,(uint8_t)1)!=(uint8_t)1){reportWireTimeout(F("VL6180X read"));return false;}
+  const uint8_t tx=Wire.endTransmission(false);
+  if(reportWireTimeout(F("VL6180X register select"))||tx!=0)return false;
+  const uint8_t received=Wire.requestFrom((uint8_t)0x29,(uint8_t)1);
+  if(reportWireTimeout(F("VL6180X read"))||received!=1)return false;
   value=Wire.read();
-  reportWireTimeout(F("VL6180X read"));
-  return true;
+  return !reportWireTimeout(F("VL6180X read data"));
 }
 
 static bool vl6180xLoadSettings(){

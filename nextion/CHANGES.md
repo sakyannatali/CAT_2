@@ -25,3 +25,7 @@ Touch Release events must send exactly these packets:
 | `0x10` | flow +5 L/min | `printh 23 02 54 10` |
 
 Do not add `cov`, `+=`, a slider or a Number component for these three values. The HMI must not change Text values itself. On boot, Arduino pushes every Text field so retained HMI values are never treated as state. This repository does not compile, produce or upload a `.tft` file.
+
+`tVentSet` is firmware-owned: it displays a pending/applied percentage in
+MANUAL and exactly `AUTO` while PI control is active. The same event protocol
+remains in use; no `.val` request is permitted.

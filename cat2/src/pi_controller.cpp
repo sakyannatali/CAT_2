@@ -37,11 +37,13 @@ void piControllerService(uint32_t now) {
   app.autoBlockReason="";
   app.piFlowErrorLpm=app.flowSetpointLpm-total;
   const float error=piErrorPercent(total);
-  const PiTerms terms=pi.update(error,dt,PI_MAX_OUTPUT_STEP_PER_S*dt,PI_INTEGRAL_LIMIT);
+  const PiTerms terms=pi.update(error,dt,PI_OUTPUT_RISE_RATE_PERCENT_PER_SEC,
+                                 PI_OUTPUT_FALL_RATE_PERCENT_PER_SEC,PI_INTEGRAL_LIMIT);
   app.piError=error;
   app.piP=terms.p;
   app.piI=terms.i;
   app.piRawOutputPercent=terms.rawOutput;
+  app.piClampedOutputPercent=terms.clampedOutput;
   app.piOutputPercent=terms.requested;
   setAutomaticFanPowerPercent(terms.requested);
 }
@@ -56,6 +58,7 @@ void piControllerPrepareAuto(float currentOutput) {
   pi.makeBumpless(error,currentOutput);
   app.piOutputPercent=currentOutput;
   app.piRawOutputPercent=currentOutput;
+  app.piClampedOutputPercent=currentOutput;
 }
 void piControllerPrintStatus() {
   float flow1,flow2,total;
@@ -74,6 +77,7 @@ void piControllerPrintStatus() {
   Serial.print(F("PI normalized error: ")); Serial.println(app.piError,3);
   Serial.print(F("PI P: ")); Serial.print(app.piP,2); Serial.print(F(" I: ")); Serial.println(app.piI,2);
   Serial.print(F("PI raw output: ")); Serial.print(app.piRawOutputPercent,2); Serial.println(F("%"));
+  Serial.print(F("PI clamped output: ")); Serial.print(app.piClampedOutputPercent,2); Serial.println(F("%"));
   Serial.print(F("PI rate-limited output: ")); Serial.print(app.piOutputPercent,2); Serial.println(F("%"));
   Serial.print(F("Requested fan output: ")); Serial.print(requested,2); Serial.println(F("%"));
   Serial.print(F("Fan manual applied/pending: ")); Serial.print(app.ventPowerEdit.applied,1); Serial.print('/'); Serial.print(app.ventPowerEdit.pending,1); Serial.println(F("%"));
@@ -81,6 +85,14 @@ void piControllerPrintStatus() {
   Serial.print(F("Fan PWM raw: ")); Serial.println(app.fanPwmRaw);
   Serial.print(F("Vent relay: ")); Serial.println(app.ventRelayOn?F("ON"):F("OFF"));
   Serial.print(F("PWM inverted: ")); Serial.println(FAN_PWM_INVERTED?F("true"):F("false"));
+  const TemperatureFaultState &temperature=app.outletTemperature;
+  const uint32_t now=millis();
+  Serial.print(F("Density temperature: "));
+  if(temperature.hasLastGood)Serial.print(temperature.lastGoodValue,2);else Serial.print(F("ERR"));
+  Serial.print(F(" C valid="));Serial.print(temperatureStateUsable(temperature,now,TEMP_STALE_TIMEOUT_MS)?F("yes"):F("no"));
+  Serial.print(F(" stale="));Serial.print(temperature.stale?F("yes"):F("no"));
+  Serial.print(F(" age_ms="));
+  if(temperature.hasLastGood)Serial.println(temperatureStateAgeMs(temperature,now));else Serial.println(F("never"));
   Serial.print(F("Block reason: "));
   if (app.autoBlocked) {
     Serial.println(app.autoBlockReason);

@@ -13,9 +13,7 @@ struct FlowRuntime {
 
 static IsrFlow isrFlow[FLOW_SENSOR_COUNT];
 static FlowRuntime runtime[FLOW_SENSOR_COUNT];
-static float lastDensityCorrection=NAN, lastDensityToutC=NAN;
-static uint32_t lastDensityMs=0;
-static bool hasLastDensity=false, densityOutOfRange=false;
+static bool densityOutOfRange=false;
 
 static void onPulse(uint8_t index) {
   const uint32_t now=micros();
@@ -32,19 +30,10 @@ bool flowMeterConversionConfigured() { return FLOW_CONVERSION_CONFIGURED; }
 
 static bool densityForNow(uint32_t now, float &correction, float &tout) {
   densityOutOfRange=false;
-  const ValueState &outlet=app.outletTemperature;
-  if (outlet.valid && (uint32_t)(now-outlet.updatedMs)<=TEMPERATURE_STALE_MS) {
-    tout=outlet.value;
+  const TemperatureFaultState &outlet=app.outletTemperature;
+  if (temperatureStateUsable(outlet,now,TEMP_STALE_TIMEOUT_MS)) {
+    tout=outlet.lastGoodValue;
     if (!airDensityCorrectionAt(tout, correction)) { densityOutOfRange=true; return false; }
-    lastDensityCorrection=correction;
-    lastDensityToutC=tout;
-    lastDensityMs=now;
-    hasLastDensity=true;
-    return true;
-  }
-  if (hasLastDensity && (uint32_t)(now-lastDensityMs)<=FLOW_OUTLET_TEMPERATURE_HOLD_MS) {
-    correction=lastDensityCorrection;
-    tout=lastDensityToutC;
     return true;
   }
   correction=NAN;
@@ -127,8 +116,10 @@ void flowMeterService(uint32_t now) {
 
 const char *flowMeterAutoBlockReason() {
   const FlowState &a=app.flow[0], &b=app.flow[1];
-  if (!a.densityValid || !b.densityValid)
+  if (!a.densityValid || !b.densityValid) {
+    if (app.outletTemperature.stale) return "TEMP SENSOR STALE";
     return densityOutOfRange ? "OUTLET TEMP OUT OF RANGE" : "OUTLET TEMP INVALID";
+  }
   if (!a.valid || !b.valid) return "BOTH FLOW SENSORS REQUIRED";
   return "FLOW SENSOR FAULT";
 }

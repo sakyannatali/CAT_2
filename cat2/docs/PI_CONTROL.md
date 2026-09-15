@@ -7,17 +7,21 @@ accepts only the committed `flowSetpointLpm`; editing `tFlowSet` with `+` or
 stale, or invalid meter is not treated as zero: AUTO exits to MANUAL and keeps
 the current safe fan command.
 
-In AUTO, `bVentApply` commits the pending manual fan value for a later return
-to MANUAL but cannot override the current PI PWM output. The display and
-Serial status distinguish the pending/applied manual setting from the actual
-PI command and raw PWM value.
+In AUTO, `bVentApply` cannot override the current PI PWM output. `tVentSet`
+displays `AUTO`, rather than a manual percentage. On AUTO→MANUAL, the actual
+fan output becomes both the applied and pending manual setting, so the next
+MANUAL output is bumpless. `fPiOutput` keeps its current HMI name and means
+**AUTO power**: the actual PI fan command while AUTO is active.
 
 Initial settings: `Kp/Cp = 0.5`, `Ti = 100 s`, update period 1 s, output
-0…100%, and output slew limit 5 percentage-points/s. The normalised-percent
-error is:
+0…100%. Its asymmetric output limits are +10 percentage-points/s rising and
+−20 percentage-points/s falling. The normalised-percent error is:
 
 `100 * (appliedFlowSetpointLpm - (filteredFlow1Lpm + filteredFlow2Lpm)) / max(appliedFlowSetpointLpm, PI_MIN_NORMALIZATION_LPM)`
 
-The integrator has anti-windup and MANUAL→AUTO uses a bumpless transfer from
-the current actual fan command. Before tuning, confirm that increasing fan
-command increases the total measured flow; do not tune PI with a failed meter.
+`control status` exposes the raw PI result, its 0…100% clamped result, and the
+rate-limited output separately. The integrator has anti-windup and
+MANUAL→AUTO uses a bumpless transfer from the current actual fan command.
+Kp remains 0.5 and Ti remains 100 s. Before tuning, confirm that increasing
+fan command increases the total measured flow; do not tune PI with a failed
+meter.

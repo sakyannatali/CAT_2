@@ -57,9 +57,23 @@ inline float signedGateToPhysicalPercent(float signedPercent) {
 inline float activeFanCommandPercent(bool autoMode, float manualApplied, float piOutput) {
   return autoMode ? clampValue(piOutput,0.0f,100.0f) : clampValue(manualApplied,0.0f,100.0f);
 }
+inline bool fanSetpointUsesAutoLabel(bool autoMode) { return autoMode; }
+inline float manualPowerAfterAutoFallback(float actualPower) {
+  return clampValue(actualPower,0.0f,100.0f);
+}
 inline uint8_t fanCommandToPwm(float commandPercent, bool inverted) {
   const uint8_t direct=(uint8_t)(clampValue(commandPercent,0.0f,100.0f)*255.0f/100.0f+0.5f);
   return inverted ? (uint8_t)(255U-direct) : direct;
+}
+inline float rateLimitOutputAsymmetric(float currentOutput, float targetOutput,
+                                       float riseRatePerSecond, float fallRatePerSecond,
+                                       float dtSeconds) {
+  const float current=clampValue(currentOutput,0.0f,100.0f);
+  const float target=clampValue(targetOutput,0.0f,100.0f);
+  if (!(dtSeconds > 0.0f)) return current;
+  if (target > current) return target < current+riseRatePerSecond*dtSeconds ? target : current+riseRatePerSecond*dtSeconds;
+  if (target < current) return target > current-fallRatePerSecond*dtSeconds ? target : current-fallRatePerSecond*dtSeconds;
+  return current;
 }
 inline bool totalFlowFromBothValid(bool flow1Valid, float flow1Lpm, bool flow2Valid,
                                    float flow2Lpm, float &totalLpm) {
@@ -70,6 +84,50 @@ inline bool totalFlowFromBothValid(bool flow1Valid, float flow1Lpm, bool flow2Va
 inline float normalizedFlowErrorPercent(float setpointLpm, float totalLpm, float minimumNormalizationLpm) {
   const float normalization=setpointLpm>minimumNormalizationLpm ? setpointLpm : minimumNormalizationLpm;
   return 100.0f*(setpointLpm-totalLpm)/normalization;
+}
+struct TemperatureFaultState {
+  float value, lastGoodValue;
+  uint32_t lastGoodMs;
+  uint8_t failCount;
+  bool hasLastGood, valid, stale;
+};
+inline void temperatureStateInitialize(TemperatureFaultState &state) {
+  state.value=NAN; state.lastGoodValue=NAN; state.lastGoodMs=0; state.failCount=0;
+  state.hasLastGood=false; state.valid=false; state.stale=false;
+}
+inline uint32_t temperatureStateAgeMs(const TemperatureFaultState &state, uint32_t now) {
+  return state.hasLastGood ? (uint32_t)(now-state.lastGoodMs) : UINT32_MAX;
+}
+inline void temperatureStateRefresh(TemperatureFaultState &state, uint32_t now, uint32_t staleTimeoutMs) {
+  if (state.hasLastGood && intervalElapsed(now,state.lastGoodMs,staleTimeoutMs)) {
+    state.valid=false;
+    state.stale=true;
+  }
+}
+inline bool temperatureStateUsable(const TemperatureFaultState &state, uint32_t now, uint32_t staleTimeoutMs) {
+  return state.valid && !state.stale && state.hasLastGood &&
+         !intervalElapsed(now,state.lastGoodMs,staleTimeoutMs);
+}
+inline void temperatureStateRecordSuccess(TemperatureFaultState &state, float value, uint32_t now) {
+  state.value=value; state.lastGoodValue=value; state.lastGoodMs=now; state.failCount=0;
+  state.hasLastGood=true; state.valid=true; state.stale=false;
+}
+inline void temperatureStateRecordFailure(TemperatureFaultState &state, uint32_t now,
+                                          uint8_t failLimit, uint32_t staleTimeoutMs) {
+  if (state.failCount<UINT8_MAX) ++state.failCount;
+  temperatureStateRefresh(state,now,staleTimeoutMs);
+  if (!state.hasLastGood || state.failCount>=failLimit || state.stale) {
+    state.valid=false;
+    state.stale=true;
+    return;
+  }
+  state.value=state.lastGoodValue;
+  state.valid=true;
+  state.stale=false;
+}
+inline bool autoRequiresTemperatureFallback(bool autoMode, const TemperatureFaultState &state,
+                                            uint32_t now, uint32_t staleTimeoutMs) {
+  return autoMode && !temperatureStateUsable(state,now,staleTimeoutMs);
 }
 inline void pendingApplyInitialize(PendingApplyState &state, float value) {
   state.applied=value;
@@ -119,7 +177,7 @@ class TimedMovingAverage {
   float values_[Capacity]; uint32_t times_[Capacity]; bool valid_[Capacity]; uint8_t count_, next_;
 };
 
-struct PiTerms { float error; float p; float i; float rawOutput; float requested; };
+struct PiTerms { float error; float p; float i; float rawOutput; float clampedOutput; float requested; };
 class PiControllerCore {
  public:
   PiControllerCore() : kp(0.5f), tiSeconds(100.0f), integral(0), output(0) {}
@@ -129,8 +187,10 @@ class PiControllerCore {
     output=clamp(desiredOutput);
     if(kp > 0.00001f && tiSeconds > 0.00001f) integral=(output/kp-normalizedError)*tiSeconds;
   }
-  PiTerms update(float normalizedError, float dtSeconds, float maxStep, float integralLimit) {
-    PiTerms r={normalizedError, kp*normalizedError, kp*(integral/tiSeconds), output, output};
+  PiTerms update(float normalizedError, float dtSeconds, float riseRatePerSecond,
+                 float fallRatePerSecond, float integralLimit) {
+    const float initialRaw=kp*(normalizedError+integral/tiSeconds);
+    PiTerms r={normalizedError, kp*normalizedError, kp*(integral/tiSeconds), initialRaw, clamp(initialRaw), output};
     if(!(dtSeconds > 0.0f) || tiSeconds <= 0.0f || kp < 0.0f) return r;
     const float candidateIntegral=clampRange(integral + normalizedError*dtSeconds, -integralLimit, integralLimit);
     const float unslewed=kp*(normalizedError+candidateIntegral/tiSeconds);
@@ -138,8 +198,9 @@ class PiControllerCore {
     const bool low=unslewed<0.0f && normalizedError<0.0f;
     if(!high && !low) integral=candidateIntegral;
     r.p=kp*normalizedError; r.i=kp*(integral/tiSeconds);
-    r.rawOutput=clamp(r.p+r.i);
-    output=clampRange(r.rawOutput, output-maxStep, output+maxStep);
+    r.rawOutput=r.p+r.i;
+    r.clampedOutput=clamp(r.rawOutput);
+    output=rateLimitOutputAsymmetric(output,r.clampedOutput,riseRatePerSecond,fallRatePerSecond,dtSeconds);
     r.requested=output;
     return r;
   }
