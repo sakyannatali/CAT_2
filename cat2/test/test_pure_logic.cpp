@@ -147,6 +147,7 @@ void test_timer_and_format() {
   char b[16]; formatElapsed(61000,b,sizeof(b)); TEST_ASSERT_EQUAL_STRING("01:01",b);
   formatElapsed(3661000,b,sizeof(b)); TEST_ASSERT_EQUAL_STRING("1:01:01",b);
   char d[24]; formatFixed1(23.14f,d,sizeof(d)); TEST_ASSERT_EQUAL_STRING("23,1",d);
+  formatFixed1(500.0f,d,sizeof(d)); TEST_ASSERT_EQUAL_STRING("500,0",d);
 }
 void test_manual_fan_apply_and_transition() {
   PendingApplyState manual;
