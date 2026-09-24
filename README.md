@@ -44,7 +44,7 @@ the applied signed gate value. They are **not measured flow**.
 
 AUTO is a feed-forward inverse of the agreed experimental model, not PI
 feedback. It does not toggle the vent relay. Its committed target scale is
-`NONE`, `30`, `35`, …, `100 L/min`; `NONE` commands model PWM `0%` but leaves
+`NONE`, `30`, `35`, …, `250 L/min`; `NONE` commands model PWM `0%` but leaves
 the relay state unchanged. The experimental model is qualified only from 5 to
 60% fan power. Results below this range are marked `BELOW CAL RANGE`, values
 above it are `EXTRAPOLATED`, and an impossible demand is `UNREACHABLE` at
@@ -55,7 +55,7 @@ above it are `EXTRAPOLATED`, and an impossible demand is `UNREACHABLE` at
 Fan power, gate and flow target use `-`, `+` and Apply. Each press changes
 only an Arduino pending value: 1% fan power, 10% signed gate command, and one
 flow-target step. Gate is `-100…+100%`; zero maps to the old physical midpoint
-(50%). Flow target cycles `NONE → 30 → 35 … → 100` and back. Apply commits the
+(50%). Flow target cycles `NONE → 30 → 35 … → 250` and back. Apply commits the
 pending value. Each control has an independent non-blocking 5-second timeout
 from its last edit; expiry restores the applied value.
 

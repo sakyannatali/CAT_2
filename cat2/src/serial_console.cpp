@@ -15,7 +15,7 @@ static uint8_t used=0, debugLevel=0;
 static void help() {
   Serial.println(F("commands: status, comp on|off, vent on|off|<%>, gate <%>, flow model [power gate],"));
   Serial.println(F("timer start|pause|reset|status, i2c scan|mux, tof on|off|scan|status|read,"));
-  Serial.println(F("control manual|auto|setpoint NONE|30..100|status, debug off|sensors|all"));
+  Serial.println(F("control manual|auto|setpoint NONE|30..250|status, debug off|sensors|all"));
 }
 static bool number(const char *s,float &v) { if(!s||!*s)return false; char *end; v=(float)strtod(s,&end); return *end==0; }
 static void printEditState(const __FlashStringHelper *name,const PendingApplyState &state,const __FlashStringHelper *unit) {
@@ -84,7 +84,7 @@ static void handle(char *s) {
     if(arg&&!strcmp(arg,"manual")) setFlowControlMode(FLOW_MANUAL);
     else if(arg&&!strcmp(arg,"auto")) setFlowControlMode(FLOW_AUTO);
     else if(arg&&!strcmp(arg,"setpoint")&&arg2&&(!strcmp(arg2,"NONE")||!strcmp(arg2,"none"))) setFlowSetpointNone();
-    else if(arg&&!strcmp(arg,"setpoint")&&number(arg2,v)) { if(!setFlowSetpointLpm(v))Serial.println(F("ERR: setpoint must be NONE or 30,35,...100 L/min")); }
+    else if(arg&&!strcmp(arg,"setpoint")&&number(arg2,v)) { if(!setFlowSetpointLpm(v))Serial.println(F("ERR: setpoint must be NONE or 30,35,...250 L/min")); }
     else if(arg&&!strcmp(arg,"status")) modelControlPrintStatus(); else help();
     return;
   }

@@ -10,7 +10,7 @@ or invalid command prints the compact help text.
 | `flow model <power> <gate>` | Diagnostic-only model calculation; power is 0…100 and gate is -100…100; no actuator changes |
 | `control manual`, `control auto` | Select MANUAL or model AUTO |
 | `control setpoint NONE` (or `0`) | Commit no flow demand, hence AUTO model PWM 0% without operating the relay |
-| `control setpoint 30` … `100` | Commit a valid five-L/min target step |
+| `control setpoint 30` … `250` | Commit a valid five-L/min target step |
 | `control status` | Same detailed model-control status as `flow model` |
 | `timer start\|pause\|reset\|status` | Arduino timer |
 | `i2c scan`, `i2c mux`, `tof …` | Bus and ToF diagnosis |

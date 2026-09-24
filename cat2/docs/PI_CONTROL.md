@@ -11,7 +11,7 @@ It sends that result through the existing central fan/actuator path only; it
 does not switch the vent relay. A gate edit has no effect until Apply, then
 AUTO immediately recalculates the model command.
 
-The target choices are `NONE`, `30`, `35`, …, `100 L/min`. `NONE` commands
+The target choices are `NONE`, `30`, `35`, …, `250 L/min`. `NONE` commands
 model power `0%` and preserves the relay state. AUTO can be selected even if
 the vent relay is OFF; in that case the saved derived command is visible in
 diagnostics, but the applied fan power and estimated actual flow are zero.

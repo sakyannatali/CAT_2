@@ -44,7 +44,9 @@ static const float FLOW_MODEL_ZERO_OUTPUT1_K = 0.025236134022f;
 static const float FLOW_MODEL_ZERO_OUTPUT2_A = 36.8919894293f;
 static const float FLOW_MODEL_ZERO_OUTPUT2_K = 0.027292152338f;
 static const float FLOW_SETPOINT_MIN_LPM = 30.0f;
-static const float FLOW_SETPOINT_MAX_LPM = 100.0f;
+// This is a user-target limit, independent from the flow predicted at 100%
+// fan power. Requests above a model's physical maximum remain UNREACHABLE.
+static const float FLOW_SETPOINT_MAX_LPM = 250.0f;
 static const uint32_t EDIT_APPLY_TIMEOUT_MS = 5000UL;
 static const float FLOW_SETPOINT_EDIT_STEP_LPM = 5.0f;
 static const float GATE_COMMAND_MIN_PERCENT = -100.0f;
