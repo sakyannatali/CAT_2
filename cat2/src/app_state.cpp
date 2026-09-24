@@ -1,16 +1,10 @@
 #include "app_state.h"
 #include "config.h"
 #include "actuators.h"
-#include "flow_meter.h"
-#include "pi_controller.h"
+#include "model_control.h"
 
 AppState app;
 
-static bool autoFeedbackAvailable() {
-  const FlowState &a=app.flow[0], &b=app.flow[1];
-  return a.valid&&a.conversionConfigured&&!isnan(a.filteredFlowLpm) &&
-         b.valid&&b.conversionConfigured&&!isnan(b.filteredFlowLpm);
-}
 static uint8_t gateAngleFor(float physicalPercent) {
   return (uint8_t)(GATE_ANGLE_MIN+(physicalPercent*(GATE_ANGLE_MAX-GATE_ANGLE_MIN)/100.0f)+0.5f);
 }
@@ -46,31 +40,27 @@ void appStateBegin() {
   app.gatePercent=50;
   app.gateAngle=gateAngleFor(app.gatePercent);
   app.flowControlMode=FLOW_MANUAL;
-  app.flowSetpointLpm=0;
   pendingApplyInitialize(app.ventPowerEdit,0);
   pendingApplyInitialize(app.gateEdit,0);
-  pendingApplyInitialize(app.flowSetpointEdit,0);
+  flowSetpointInitialize(app.flowSetpoint,false,0);
   app.timerRunning=false;
   app.timerElapsedMs=0;
   temperatureStateInitialize(app.outletTemperature);
   for(uint8_t i=0;i<2;++i) {
     temperatureStateInitialize(app.skinTemperature[i]);
-    app.flow[i]={0,0,0,0,NAN,NAN,NAN,NAN,NAN,false,true,false,FLOW_CONVERSION_CONFIGURED,false};
     app.tof[i]={255,0,0,0,false,false,false,false,false,0};
   }
-  app.piOutputPercent=0;
-  app.piRawOutputPercent=0;
-  app.piClampedOutputPercent=0;
-  app.piError=app.piFlowErrorLpm=app.piP=app.piI=0;
-  app.autoBlocked=false;
-  app.autoBlockReason="";
+  app.modelFlow={0,0,0};
+  app.modelTargetFanPowerPercent=0;
+  app.modelStatus=FLOW_MODEL_NONE;
 }
 
 void setCompressor(bool on) { app.compressorOn=on; actuatorsApplyCompressor(on); }
 void setVentEnabled(bool on) {
   app.ventRelayOn=on;
   actuatorsApplyVent(on);
-  applyActualFan(activeFanCommandPercent(app.flowControlMode==FLOW_AUTO,app.requestedFanPowerPercent,app.piOutputPercent));
+  applyActualFan(activeFanCommandPercent(app.flowControlMode==FLOW_AUTO,app.requestedFanPowerPercent,app.modelTargetFanPowerPercent));
+  if(app.flowControlMode==FLOW_AUTO) modelControlRequestAutoUpdate();
 }
 void setFanPowerPercent(float percent) {
   app.requestedFanPowerPercent=clampValue(percent,0.0f,100.0f);
@@ -82,36 +72,25 @@ void setGateCommandPercent(int16_t signedPercent) {
   const float command=clampValue((float)signedPercent,GATE_COMMAND_MIN_PERCENT,GATE_COMMAND_MAX_PERCENT);
   pendingApplyInitialize(app.gateEdit,command);
   applyGatePosition(command);
-}
-void stopAutoForSafety(const char *reason) {
-  app.flowControlMode=FLOW_MANUAL;
-  adoptCurrentFanAsManual();
-  app.autoBlocked=true;
-  app.autoBlockReason=reason;
+  if(app.flowControlMode==FLOW_AUTO) modelControlRequestAutoUpdate();
 }
 bool setFlowControlMode(FlowControlMode mode) {
-  if(mode==FLOW_AUTO && !flowMeterConversionConfigured()) {
-    app.autoBlocked=true; app.autoBlockReason="FLOW CONVERSION MISSING"; return false;
-  }
-  if(mode==FLOW_AUTO && !app.ventRelayOn) {
-    app.autoBlocked=true; app.autoBlockReason="FAN OFF"; return false;
-  }
-  if(mode==FLOW_AUTO && !autoFeedbackAvailable()) {
-    app.autoBlocked=true; app.autoBlockReason="BOTH FLOW SENSORS REQUIRED"; return false;
-  }
-  if(mode==FLOW_AUTO) piControllerPrepareAuto(app.appliedFanPowerPercent);
-  else if(app.flowControlMode==FLOW_AUTO) adoptCurrentFanAsManual();
+  if(mode==FLOW_MANUAL && app.flowControlMode==FLOW_AUTO) adoptCurrentFanAsManual();
   app.flowControlMode=mode;
-  app.autoBlocked=false;
-  app.autoBlockReason="";
-  applyActualFan(activeFanCommandPercent(mode==FLOW_AUTO,app.requestedFanPowerPercent,app.piOutputPercent));
+  if(mode==FLOW_AUTO) modelControlRequestAutoUpdate();
+  else applyActualFan(app.requestedFanPowerPercent);
   return true;
 }
 bool setFlowSetpointLpm(float lpm) {
-  if(lpm<FLOW_SETPOINT_MIN_LPM || lpm>FLOW_SETPOINT_MAX_LPM) return false;
-  app.flowSetpointLpm=lpm;
-  pendingApplyInitialize(app.flowSetpointEdit,lpm);
+  if(lpm==0.0f) { setFlowSetpointNone(); return true; }
+  if(!flowSetpointValueAllowed(lpm,FLOW_SETPOINT_MIN_LPM,FLOW_SETPOINT_MAX_LPM,FLOW_SETPOINT_EDIT_STEP_LPM)) return false;
+  flowSetpointInitialize(app.flowSetpoint,true,lpm);
+  if(app.flowControlMode==FLOW_AUTO) modelControlRequestAutoUpdate();
   return true;
+}
+void setFlowSetpointNone() {
+  flowSetpointInitialize(app.flowSetpoint,false,0);
+  if(app.flowControlMode==FLOW_AUTO) modelControlRequestAutoUpdate();
 }
 
 void editVentPower(int8_t direction,uint32_t now) {
@@ -121,7 +100,7 @@ void editGate(int8_t direction,uint32_t now) {
   pendingApplyAdjust(app.gateEdit,direction,GATE_COMMAND_EDIT_STEP_PERCENT,GATE_COMMAND_MIN_PERCENT,GATE_COMMAND_MAX_PERCENT,now);
 }
 void editFlowSetpoint(int8_t direction,uint32_t now) {
-  pendingApplyAdjust(app.flowSetpointEdit,direction,FLOW_SETPOINT_EDIT_STEP_LPM,FLOW_SETPOINT_MIN_LPM,FLOW_SETPOINT_MAX_LPM,now);
+  flowSetpointAdjust(app.flowSetpoint,direction,FLOW_SETPOINT_MIN_LPM,FLOW_SETPOINT_MAX_LPM,FLOW_SETPOINT_EDIT_STEP_LPM,now);
 }
 bool applyVentPowerEdit() {
   if(!pendingApplyCommit(app.ventPowerEdit)) return false;
@@ -133,15 +112,16 @@ bool applyVentPowerEdit() {
 bool applyGateEdit() {
   if(!pendingApplyCommit(app.gateEdit)) return false;
   applyGatePosition(app.gateEdit.applied);
+  if(app.flowControlMode==FLOW_AUTO) modelControlRequestAutoUpdate();
   return true;
 }
 bool applyFlowSetpointEdit() {
-  if(!pendingApplyCommit(app.flowSetpointEdit)) return false;
-  app.flowSetpointLpm=app.flowSetpointEdit.applied;
+  if(!flowSetpointCommit(app.flowSetpoint)) return false;
+  if(app.flowControlMode==FLOW_AUTO) modelControlRequestAutoUpdate();
   return true;
 }
 void appStateService(uint32_t now) {
   pendingApplyTimedOut(app.ventPowerEdit,now,EDIT_APPLY_TIMEOUT_MS);
   pendingApplyTimedOut(app.gateEdit,now,EDIT_APPLY_TIMEOUT_MS);
-  pendingApplyTimedOut(app.flowSetpointEdit,now,EDIT_APPLY_TIMEOUT_MS);
+  flowSetpointTimedOut(app.flowSetpoint,now,EDIT_APPLY_TIMEOUT_MS);
 }

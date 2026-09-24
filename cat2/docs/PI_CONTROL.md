@@ -1,27 +1,28 @@
-# PI flow control
+# AUTO flow model (PI retired)
 
-MANUAL applies the committed manual fan value while the vent relay is ON. AUTO
-accepts only the committed `flowSetpointLpm`; editing `tFlowSet` with `+` or
-`-` cannot affect PI until `bFlowApply` is pressed. Its feedback is always
-`filteredFlow1Lpm + filteredFlow2Lpm`. Both meters must be valid. A missing,
-stale, or invalid meter is not treated as zero: AUTO exits to MANUAL and keeps
-the current safe fan command.
+This file retains its historical name so existing links continue to work. The
+firmware contains **no PI controller**, no integral state, no rate limiter and
+no flow-meter feedback path.
 
-In AUTO, `bVentApply` cannot override the current PI PWM output. `tVentSet`
-displays `AUTO`, rather than a manual percentage. On AUTO→MANUAL, the actual
-fan output becomes both the applied and pending manual setting, so the next
-MANUAL output is bumpless. `fPiOutput` keeps its current HMI name and means
-**AUTO power**: the actual PI fan command while AUTO is active.
+AUTO is feed-forward. Once a target has been committed, the firmware evaluates
+the experimental total-flow model for the currently applied signed gate and
+uses a bounded binary search over fan power 0…100% to find the closest target.
+It sends that result through the existing central fan/actuator path only; it
+does not switch the vent relay. A gate edit has no effect until Apply, then
+AUTO immediately recalculates the model command.
 
-Initial settings: `Kp/Cp = 0.5`, `Ti = 100 s`, update period 1 s, output
-0…100%. Its asymmetric output limits are +10 percentage-points/s rising and
-−20 percentage-points/s falling. The normalised-percent error is:
+The target choices are `NONE`, `30`, `35`, …, `100 L/min`. `NONE` commands
+model power `0%` and preserves the relay state. AUTO can be selected even if
+the vent relay is OFF; in that case the saved derived command is visible in
+diagnostics, but the applied fan power and estimated actual flow are zero.
 
-`100 * (appliedFlowSetpointLpm - (filteredFlow1Lpm + filteredFlow2Lpm)) / max(appliedFlowSetpointLpm, PI_MIN_NORMALIZATION_LPM)`
+The model is experimental from 5% through 60% fan command. A solved result
+below 5% is reported as `BELOW CAL RANGE`; above 60% it is `EXTRAPOLATED`.
+If the requested total is greater than the model predicts at 100%, the fan is
+commanded to 100% and the status is `UNREACHABLE`. These are diagnostic
+honesty states, not sensor-fault or relay-control commands.
 
-`control status` exposes the raw PI result, its 0…100% clamped result, and the
-rate-limited output separately. The integrator has anti-windup and
-MANUAL→AUTO uses a bumpless transfer from the current actual fan command.
-Kp remains 0.5 and Ti remains 100 s. Before tuning, confirm that increasing
-fan command increases the total measured flow; do not tune PI with a failed
-meter.
+`fPiOutput` is an unchanged HMI component name only. Its displayed value is
+the actual applied AUTO model power, not a PI output. On AUTO→MANUAL the
+current actual power becomes the applied/pending manual power, avoiding a PWM
+step.

@@ -1,33 +1,31 @@
 # Current Nextion-to-firmware map
 
-The Nextion HMI is display and button hardware only. It never owns a real actuator value or PI setpoint. Arduino is the single source of truth for each applied value, pending edit value, editing flag and independent edit timestamp.
+The Nextion is display and button hardware only. Arduino owns every applied
+value, pending edit, timestamp and actuator command. `ui_final.HMI` was not
+edited automatically.
 
 | Purpose | Nextion component(s) | Firmware owner |
 |---|---|---|
 | Compressor | `fCompStatus`, `bCompOn`, `bCompOff` | `setCompressor()` |
 | Vent relay | `fVentStatus`, `bVentOn`, `bVentOff` | `setVentEnabled()` |
 | Mode | `fMode`, `fModeStatus`, `bAuto`, `bManual` | `setFlowControlMode()` |
-| Manual/AUTO fan indication | `bVentMinus`, `tVentSet`, `bVentPlus`, `bVentApply` | `ventPowerEdit`, `applyVentPowerEdit()` |
+| Manual/AUTO fan | `bVentMinus`, `tVentSet`, `bVentPlus`, `bVentApply` | `ventPowerEdit`, `applyVentPowerEdit()` |
 | Gate edit | `bGateMinus`, `tGateSet`, `bGatePlus`, `bGateApply` | `gateEdit`, `applyGateEdit()` |
-| Flow-setpoint edit | `bFlowMinus`, `tFlowSet`, `bFlowPlus`, `bFlowApply` | `flowSetpointEdit`, `applyFlowSetpointEdit()` |
-| Applied PI setpoint/output | `fSetpoint`, `fPiOutput`, `fError` | `flowSetpointLpm`, PI controller |
+| Flow-target edit | `bFlowMinus`, `tFlowSet`, `bFlowPlus`, `bFlowApply` | `flowSetpoint`, `applyFlowSetpointEdit()` |
+| Applied target / AUTO power / warning | `fSetpoint`, `fPiOutput`, `fError` | `flowSetpoint`, `modelTargetFanPowerPercent`, `modelStatus` |
 | Timer | `fTimer`, `bTimerStart`, `bTimerReset` | `timer_service.cpp` |
 | Temperatures | `fTIn`, `fTSkin1`, `fTSkin2` | `temperature_sensors.cpp` |
-| Flow display | `fVolume1`, `fVolume2` | `flow_meter.cpp` |
+| Calculated output flows | `fVolume1`, `fVolume2` | `flow_model.cpp` / `model_control.cpp` |
 | Distances | `fLSkin1`, `fLSkin2` | `tof_sensors.cpp` |
 
-`+`/`-` sends one trigger to Arduino. Arduino changes only the pending value,
-updates the adjacent Text field, and restarts that parameter's own five-second
-timeout. Fan changes by 1%; gate changes by 10% in its signed `-100…+100%`
-command scale; flow setpoint changes by 5 L/min (snapped to 0…100 L/min).
-Apply commits pending to applied. Five seconds without Apply cancels the
-pending edit and restores the Text field to the applied value. The signed gate
-command maps to the legacy physical scale as `(command + 100) / 2`, so `0%`
-is the old midpoint.
+The existing event protocol stays unchanged. Fan steps by 1%; signed gate steps
+by 10%. Flow target steps `NONE → 30 → 35 … → 100`, and minus from 30 returns
+to `NONE`. Apply commits; each field independently cancels after 5 seconds.
+`fSetpoint` displays applied `NONE` or the applied L/min target. While an edit
+is pending, `tFlowSet` alone shows its pending `NONE` or target value.
 
-There are no sliders, hidden Number components, `.val` reads, or `get` commands for fan power, gate or flow setpoint. In AUTO, fan Apply cannot change PWM; PWM remains PI-controlled by the sum of both valid flow meters.
-
-In MANUAL, `tVentSet` is the manual applied/pending percentage such as `45%`.
-In AUTO it is always `AUTO`, making clear that PI owns PWM. On AUTO→MANUAL,
-Arduino adopts the actual PI fan output into both manual applied and pending
-values before writing the percentage back to `tVentSet`.
+No slider, Number component, `.val` read or `get` command is needed. In AUTO,
+fan Apply cannot replace model PWM, and `tVentSet` shows `AUTO`. `fPiOutput`
+is a legacy component name: it now means the actual applied model power, not a
+PI result. The HMI label should be changed manually to “AUTO power” in Nextion
+Editor when the next approved HMI update is made.

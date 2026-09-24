@@ -1,14 +1,9 @@
 #pragma once
 #include <Arduino.h>
 #include "pure_logic.h"
+#include "flow_model.h"
 
 enum FlowControlMode : uint8_t { FLOW_MANUAL, FLOW_AUTO };
-struct FlowState {
-  uint32_t totalPulses, lastPulsePeriodUs, lastPulseAgeMs;
-  float frequencyHz, instantFlowLpm, filteredFlowLpm, displayFlowLpm;
-  float densityCorrection, outletTemperatureUsedC;
-  bool valid, stale, zeroFlow, conversionConfigured, densityValid;
-};
 struct TofState {
   uint8_t channel, modelId, revisionId;
   uint16_t distanceMm;
@@ -19,14 +14,16 @@ struct AppState {
   bool compressorOn, ventRelayOn;
   float requestedFanPowerPercent, appliedFanPowerPercent;
   float gatePercent, gateCommandPercent; uint8_t gateAngle;
-  FlowControlMode flowControlMode; float flowSetpointLpm;
-  PendingApplyState ventPowerEdit, gateEdit, flowSetpointEdit;
+  FlowControlMode flowControlMode;
+  PendingApplyState ventPowerEdit, gateEdit;
+  FlowSetpointState flowSetpoint;
   bool timerRunning; uint32_t timerElapsedMs;
   TemperatureFaultState outletTemperature, skinTemperature[2];
-  FlowState flow[2]; TofState tof[2];
-  float piOutputPercent, piRawOutputPercent, piClampedOutputPercent, piError, piFlowErrorLpm, piP, piI;
+  TofState tof[2];
+  FlowEstimate modelFlow;
+  float modelTargetFanPowerPercent;
+  FlowModelStatus modelStatus;
   uint8_t fanPwmRaw;
-  bool autoBlocked; const char *autoBlockReason;
 };
 extern AppState app;
 void appStateBegin();
@@ -37,6 +34,7 @@ void setAutomaticFanPowerPercent(float percent);
 void setGateCommandPercent(int16_t signedPercent);
 bool setFlowControlMode(FlowControlMode mode);
 bool setFlowSetpointLpm(float lpm);
+void setFlowSetpointNone();
 void editVentPower(int8_t direction, uint32_t now);
 void editGate(int8_t direction, uint32_t now);
 void editFlowSetpoint(int8_t direction, uint32_t now);
@@ -44,4 +42,3 @@ bool applyVentPowerEdit();
 bool applyGateEdit();
 bool applyFlowSetpointEdit();
 void appStateService(uint32_t now);
-void stopAutoForSafety(const char *reason);

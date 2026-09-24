@@ -21,11 +21,28 @@ Touch Release events must send exactly these packets:
 | `0x0C` | fan +1% | `printh 23 02 54 0C` |
 | `0x0D` | gate -10% (signed command) | `printh 23 02 54 0D` |
 | `0x0E` | gate +10% (signed command) | `printh 23 02 54 0E` |
-| `0x0F` | flow -5 L/min | `printh 23 02 54 0F` |
-| `0x10` | flow +5 L/min | `printh 23 02 54 10` |
+| `0x0F` | flow target − one step (`30 → NONE`) | `printh 23 02 54 0F` |
+| `0x10` | flow target + one step (`NONE → 30`) | `printh 23 02 54 10` |
 
 Do not add `cov`, `+=`, a slider or a Number component for these three values. The HMI must not change Text values itself. On boot, Arduino pushes every Text field so retained HMI values are never treated as state. This repository does not compile, produce or upload a `.tft` file.
 
 `tVentSet` is firmware-owned: it displays a pending/applied percentage in
-MANUAL and exactly `AUTO` while PI control is active. The same event protocol
-remains in use; no `.val` request is permitted.
+MANUAL and exactly `AUTO` while feed-forward model AUTO is active. The same
+event protocol remains in use; no `.val` request is permitted.
+
+## Pending manual HMI text update
+
+The binary HMI was not modified automatically. When an approved Nextion Editor
+session is available, keep all component names and Touch Release `printh`
+packets above, then change visible labels only:
+
+- rename any “PI output” caption next to `fPiOutput` to **AUTO power**;
+- label `fVolume1` and `fVolume2` as **Calculated output 1/2, L/min** (not
+  measured flow);
+- label `fSetpoint` as **Applied model target** and ensure `NONE` fits;
+- make the warning area next to `fError` wide enough for `BELOW CAL RANGE`,
+  `EXTRAPOLATED`, and `UNREACHABLE`.
+
+Compile the unchanged-protocol project in Nextion Editor, review the generated
+`.tft`, then load it only after separate explicit approval. This repository
+does not create or upload a `.tft` file.

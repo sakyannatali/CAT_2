@@ -1,34 +1,34 @@
 # Diagnostics
 
-Use the 9600-baud monitor. Commands are bounded to 95 characters.
+Use the 9600-baud serial monitor. Input is bounded to 95 characters; an unknown
+or invalid command prints the compact help text.
 
 | Command | Result |
 |---|---|
-| `status` | Actuators, all applied/pending values, DS18B20/GY-906 health and I²C timeout/recovery counters |
-| `flow`, `flow raw`, `flow density`, `flow reset` | Flow frequency, L/min conversion, density and counters |
-| `control manual\|auto` | Select actual mode |
-| `control setpoint <L/min>` | Immediately set an applied setpoint from Serial, range 0…100 |
-| `control status` | Both filtered flows, total, setpoint, error, P/I, raw/clamped/rate-limited PI outputs, actual command, density-temperature validity/age and AUTO block reason |
-| `control kp <value>`, `control ti <s>` | PI tuning for this boot |
+| `status` | Central actuator state, pending edits, timer, temperature/ToF health, and model status |
+| `flow model` | Applied model estimate: Q1, Q2, total, target, derived fan command, actual fan command, relay and raw PWM |
+| `flow model <power> <gate>` | Diagnostic-only model calculation; power is 0…100 and gate is -100…100; no actuator changes |
+| `control manual`, `control auto` | Select MANUAL or model AUTO |
+| `control setpoint NONE` (or `0`) | Commit no flow demand, hence AUTO model PWM 0% without operating the relay |
+| `control setpoint 30` … `100` | Commit a valid five-L/min target step |
+| `control status` | Same detailed model-control status as `flow model` |
 | `timer start\|pause\|reset\|status` | Arduino timer |
 | `i2c scan`, `i2c mux`, `tof …` | Bus and ToF diagnosis |
+| `debug off\|sensors\|all` | Disable reports, sensor/ToF report, or sensor/ToF plus model report every second |
 
-`status` reports three independent edit records: applied, pending, editing, age and remaining time. The five-second timeout is calculated from each parameter's most recent `+`/`-` event. Expiry discards pending data; Apply when not editing is deliberately a no-op.
+`flow`, `flow raw`, `flow density`, `flow reset`, PI tuning commands, pulse
+counters and Hz output have been intentionally removed because the hardware
+meters are disconnected. The `flow model` diagnostic is an estimate, not a
+replacement for a sensor.
 
-`Fan command: <percent>% -> PWM <0..255>` is emitted only when the raw PWM
-value changes. It is the direct trace of the only hardware PWM path; with an
-OFF vent relay the actual command remains `0%` even when a manual value is
-stored.
+Each edit record reports applied value, pending value, editing state, age and
+remaining time. The five-second timeout is measured from the latest `+`/`-`
+event. An expired edit is discarded; Apply while not editing is a no-op.
 
-AUTO never selects one meter or an average. It requires valid filtered values
-from both meters and uses their sum; per-meter feedback selection is not part
-of the command interface.
+`Fan command: <percent>% -> PWM <0..255>` appears only when the actual raw PWM
+value changes. It is the trace of the sole hardware PWM path. With vent relay
+OFF, applied fan power and calculated flow are zero even if a manual or model
+command has been saved.
 
-Each temperature status line contains the last-good value, `valid`, `stale`,
-`fail_count`, age and last error. One or two failures retain the last-good
-value; `TEMP_FAIL_COUNT_LIMIT=3` failures or an age of
-`TEMP_STALE_TIMEOUT_MS=2500` makes the sensor stale. Recovery is attempted at
-most once per second. A stale outlet temperature produces `TEMP SENSOR STALE`,
-invalidates density correction and causes AUTO→MANUAL without changing the
-current fan command. The I²C summary reports timeout/recovery counts and the
-last PCA9547-ACK result.
+Temperature and ToF fault information remains independent from model AUTO.
+A stale temperature is displayed and logged, but does not alter model PWM.
