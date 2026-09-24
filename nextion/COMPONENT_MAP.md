@@ -19,7 +19,7 @@ edited automatically.
 | Distances | `fLSkin1`, `fLSkin2` | `tof_sensors.cpp` |
 
 The existing event protocol stays unchanged. Fan steps by 1%; signed gate steps
-by 10%. Flow target steps `NONE → 30 → 35 … → 250`, and minus from 30 returns
+by 10%. Flow target steps `NONE → 30 → 35 … → 500`, and minus from 30 returns
 to `NONE`. Apply commits; each field independently cancels after 5 seconds.
 `fSetpoint` displays applied `NONE` or the applied L/min target. While an edit
 is pending, `tFlowSet` alone shows its pending `NONE` or target value.

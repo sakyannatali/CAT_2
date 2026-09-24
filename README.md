@@ -44,18 +44,22 @@ the applied signed gate value. They are **not measured flow**.
 
 AUTO is a feed-forward inverse of the agreed experimental model, not PI
 feedback. It does not toggle the vent relay. Its committed target scale is
-`NONE`, `30`, `35`, …, `250 L/min`; `NONE` commands model PWM `0%` but leaves
+`NONE`, `30`, `35`, …, `500 L/min`; `NONE` commands model PWM `0%` but leaves
 the relay state unchanged. The experimental model is qualified only from 5 to
 60% fan power. Results below this range are marked `BELOW CAL RANGE`, values
 above it are `EXTRAPOLATED`, and an impossible demand is `UNREACHABLE` at
 100%. See [`cat2/docs/FLOW_MODEL.md`](cat2/docs/FLOW_MODEL.md).
+
+The AUTO target is always total flow: `Qtotal = Q1 + Q2`. `500 L/min` is a
+user-input ceiling, not a clamp on either calculated output or a promise that
+the model can attain that total at the current gate position.
 
 ## Nextion edit/apply behavior
 
 Fan power, gate and flow target use `-`, `+` and Apply. Each press changes
 only an Arduino pending value: 1% fan power, 10% signed gate command, and one
 flow-target step. Gate is `-100…+100%`; zero maps to the old physical midpoint
-(50%). Flow target cycles `NONE → 30 → 35 … → 250` and back. Apply commits the
+(50%). Flow target cycles `NONE → 30 → 35 … → 500` and back. Apply commits the
 pending value. Each control has an independent non-blocking 5-second timeout
 from its last edit; expiry restores the applied value.
 

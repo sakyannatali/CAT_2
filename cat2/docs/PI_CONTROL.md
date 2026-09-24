@@ -11,10 +11,14 @@ It sends that result through the existing central fan/actuator path only; it
 does not switch the vent relay. A gate edit has no effect until Apply, then
 AUTO immediately recalculates the model command.
 
-The target choices are `NONE`, `30`, `35`, …, `250 L/min`. `NONE` commands
+The target choices are `NONE`, `30`, `35`, …, `500 L/min`. `NONE` commands
 model power `0%` and preserves the relay state. AUTO can be selected even if
 the vent relay is OFF; in that case the saved derived command is visible in
 diagnostics, but the applied fan power and estimated actual flow are zero.
+
+The target is the combined model output `Qtotal = Q1 + Q2`, never the limit
+for an individual output. The 500 L/min UI limit does not clip `Q1`, `Q2`, or
+their calculated sum.
 
 The model is experimental from 5% through 60% fan command. A solved result
 below 5% is reported as `BELOW CAL RANGE`; above 60% it is `EXTRAPOLATED`.

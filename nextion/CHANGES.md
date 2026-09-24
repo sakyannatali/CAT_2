@@ -31,7 +31,7 @@ MANUAL and exactly `AUTO` while feed-forward model AUTO is active. The same
 event protocol remains in use; no `.val` request is permitted.
 
 `tFlowSet` is also firmware-owned. Its range is `NONE`, `30`, `35`, …,
-`250 л/мин`; `250 +` stays at `250`, and `NONE -` stays `NONE`.
+`500 л/мин`; `500 +` stays at `500`, and `NONE -` stays `NONE`.
 
 ## Pending manual HMI text update
 
