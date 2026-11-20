@@ -166,6 +166,17 @@ void test_pending_gate_and_timeout() {
   pendingApplyAdjust(gate,1,10.0f,-100.0f,100.0f,100); TEST_ASSERT_TRUE(pendingApplyTimedOut(gate,5100,5000));
   TEST_ASSERT_FLOAT_WITHIN(0.001f,-10.0f,gate.pending);
 }
+void test_configurable_gate_servo_points() {
+  const float neg100=GATE_ANGLE_AT_NEG_100, neg50=GATE_ANGLE_AT_NEG_50;
+  const float zero=GATE_ANGLE_AT_ZERO, pos50=GATE_ANGLE_AT_POS_50, pos100=GATE_ANGLE_AT_POS_100;
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,neg100,gateAngleForSignedCommand(-100.0f,neg100,neg50,zero,pos50,pos100));
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,neg50,gateAngleForSignedCommand(-50.0f,neg100,neg50,zero,pos50,pos100));
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,zero,gateAngleForSignedCommand(0.0f,neg100,neg50,zero,pos50,pos100));
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,pos50,gateAngleForSignedCommand(50.0f,neg100,neg50,zero,pos50,pos100));
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,pos100,gateAngleForSignedCommand(100.0f,neg100,neg50,zero,pos50,pos100));
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,(neg50+zero)*0.5f,gateAngleForSignedCommand(-25.0f,neg100,neg50,zero,pos50,pos100));
+  TEST_ASSERT_FLOAT_WITHIN(0.001f,(zero+pos50)*0.5f,gateAngleForSignedCommand(25.0f,neg100,neg50,zero,pos50,pos100));
+}
 int main(int,char**) {
   UNITY_BEGIN();
   RUN_TEST(test_model_direct_reference_curve); RUN_TEST(test_model_zero_and_nonnegative);
@@ -173,6 +184,6 @@ int main(int,char**) {
   RUN_TEST(test_model_inverse_and_status); RUN_TEST(test_model_inverse_for_500_lpm_and_unreachable_status); RUN_TEST(test_model_status_from_actual_power);
   RUN_TEST(test_flow_setpoint_none_scale_and_pending_apply); RUN_TEST(test_flow_setpoint_timeout_and_wraparound);
   RUN_TEST(test_temperature_fault_state); RUN_TEST(test_timer_and_format);
-  RUN_TEST(test_manual_fan_apply_and_transition); RUN_TEST(test_pending_gate_and_timeout); RUN_TEST(test_model_estimates_are_not_clamped_by_user_target_limit);
+  RUN_TEST(test_manual_fan_apply_and_transition); RUN_TEST(test_pending_gate_and_timeout); RUN_TEST(test_configurable_gate_servo_points); RUN_TEST(test_model_estimates_are_not_clamped_by_user_target_limit);
   return UNITY_END();
 }

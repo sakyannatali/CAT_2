@@ -5,8 +5,11 @@
 
 AppState app;
 
-static uint8_t gateAngleFor(float physicalPercent) {
-  return (uint8_t)(GATE_ANGLE_MIN+(physicalPercent*(GATE_ANGLE_MAX-GATE_ANGLE_MIN)/100.0f)+0.5f);
+static uint8_t gateAngleFor(float signedPercent) {
+  const float angle=gateAngleForSignedCommand(signedPercent,
+      GATE_ANGLE_AT_NEG_100,GATE_ANGLE_AT_NEG_50,GATE_ANGLE_AT_ZERO,
+      GATE_ANGLE_AT_POS_50,GATE_ANGLE_AT_POS_100);
+  return (uint8_t)(clampValue(angle,0.0f,180.0f)+0.5f);
 }
 static void applyActualFan(float commandPercent) {
   const float command=app.ventRelayOn ? clampValue(commandPercent,0.0f,100.0f) : 0.0f;
@@ -22,7 +25,7 @@ static void applyActualFan(float commandPercent) {
 static void applyGatePosition(float signedPercent) {
   app.gateCommandPercent=clampValue(signedPercent,GATE_COMMAND_MIN_PERCENT,GATE_COMMAND_MAX_PERCENT);
   app.gatePercent=signedGateToPhysicalPercent(app.gateCommandPercent);
-  app.gateAngle=gateAngleFor(app.gatePercent);
+  app.gateAngle=gateAngleFor(app.gateCommandPercent);
   actuatorsApplyGate(app.gateAngle);
 }
 static void adoptCurrentFanAsManual() {
@@ -38,7 +41,7 @@ void appStateBegin() {
   app.fanPwmRaw=FAN_PWM_INVERTED ? 255 : 0;
   app.gateCommandPercent=0;
   app.gatePercent=50;
-  app.gateAngle=gateAngleFor(app.gatePercent);
+  app.gateAngle=gateAngleFor(app.gateCommandPercent);
   app.flowControlMode=FLOW_MANUAL;
   pendingApplyInitialize(app.ventPowerEdit,0);
   pendingApplyInitialize(app.gateEdit,0);

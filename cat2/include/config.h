@@ -23,8 +23,14 @@ static const uint8_t DS18B20_PIN = 64;   // Native tests have no Arduino A10 mac
 
 static const bool RELAY_ACTIVE_LOW = true;
 static const bool FAN_PWM_INVERTED = true;  // Old UI inverted PWM; one authority now.
-static const uint8_t GATE_ANGLE_MIN = 23;
-static const uint8_t GATE_ANGLE_MAX = 70;
+// Servo calibration at the signed UI gate positions. Defaults reproduce the
+// previous 23..70 degree linear mapping. Increase GATE_ANGLE_AT_POS_100 to
+// make the +100% (closed) endpoint move farther, after checking the mechanism.
+static const uint8_t GATE_ANGLE_AT_NEG_100 = 0;
+static const uint8_t GATE_ANGLE_AT_NEG_50 = 30;
+static const uint8_t GATE_ANGLE_AT_ZERO = 45;
+static const uint8_t GATE_ANGLE_AT_POS_50 = 60;
+static const uint8_t GATE_ANGLE_AT_POS_100 = 90;
 
 // D2 and D3 are deliberately not repurposed. The former pulse flow meters are
 // physically disconnected; flow is now an open-loop experimental model.

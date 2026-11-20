@@ -7,7 +7,7 @@ All pins below are defined in `cat2/include/config.h`; do not alter wiring based
 | Compressor relay | D43, active LOW |
 | Vent relay | D42, active LOW |
 | Fan PWM | D9; polarity is controlled only by `FAN_PWM_INVERTED` |
-| Gate servo | D45; 0–100% maps to 23–70 degrees |
+| Gate servo | D45; signed −100/−50/0/+50/+100% map to the five `GATE_ANGLE_AT_*` settings in `config.h` |
 | DS18B20 outlet temperature | A10 (Arduino digital 64; legacy sketch uses numeric 46) |
 | D2 / D3 | Former pulse-flow inputs; physically disconnected and intentionally unassigned |
 | I²C | SDA D20, SCL D21, start at 50 kHz |
@@ -23,5 +23,15 @@ Never pull an Arduino input to 12 V or 24 V; keep the sensor arrow aligned with
 flow direction.
 
 If Serial1 is intentionally selected in `config.h`, use TX1 D18 → Nextion RX and RX1 D19 ← Nextion TX. Do not change Nextion baud rate unless the HMI is changed and recompiled too.
+
+## Gate-servo calibration
+
+`config.h` contains five independently adjustable servo-angle points:
+`GATE_ANGLE_AT_NEG_100`, `GATE_ANGLE_AT_NEG_50`, `GATE_ANGLE_AT_ZERO`,
+`GATE_ANGLE_AT_POS_50`, and `GATE_ANGLE_AT_POS_100`. Firmware linearly
+interpolates between neighbouring points. The defaults preserve the previous
+23…70° mapping. To make the signed `+100%` closed position close farther,
+increase only `GATE_ANGLE_AT_POS_100` in small verified increments; keep every
+angle within 0…180° and check that the mechanism does not bind.
 
 The PCA9547 may expose multiple devices at the same I²C address because only one channel is selected at a time. Exact MLX90614 and ToF channel positions are discovered and printed by diagnostics; verify them on the actual apparatus.

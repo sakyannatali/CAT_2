@@ -7,7 +7,7 @@ static uint8_t relayLevel(bool on) { return (on == RELAY_ACTIVE_LOW) ? LOW : HIG
 void actuatorsBegin() {
   pinMode(RELAY_COMPRESSOR_PIN,OUTPUT); pinMode(RELAY_VENT_PIN,OUTPUT); pinMode(FAN_PWM_PIN,OUTPUT);
   digitalWrite(RELAY_COMPRESSOR_PIN,relayLevel(false)); digitalWrite(RELAY_VENT_PIN,relayLevel(false)); analogWrite(FAN_PWM_PIN,FAN_PWM_INVERTED?255:0);
-  gateServo.attach(GATE_SERVO_PIN); gateServo.write((GATE_ANGLE_MIN+GATE_ANGLE_MAX+1)/2);
+  gateServo.attach(GATE_SERVO_PIN); gateServo.write(GATE_ANGLE_AT_ZERO);
 }
 void actuatorsApplyCompressor(bool on) { digitalWrite(RELAY_COMPRESSOR_PIN,relayLevel(on)); }
 void actuatorsApplyVent(bool on) { digitalWrite(RELAY_VENT_PIN,relayLevel(on)); }

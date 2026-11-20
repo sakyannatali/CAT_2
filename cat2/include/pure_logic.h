@@ -25,6 +25,15 @@ inline float snapToStep(float value, float step, float minimum, float maximum) {
 inline float signedGateToPhysicalPercent(float signedPercent) {
   return (clampValue(signedPercent,-100.0f,100.0f)+100.0f)*0.5f;
 }
+inline float gateAngleForSignedCommand(float signedPercent, float angleAtNeg100,
+                                       float angleAtNeg50, float angleAtZero,
+                                       float angleAtPos50, float angleAtPos100) {
+  const float command=clampValue(signedPercent,-100.0f,100.0f);
+  if(command<=-50.0f) return angleAtNeg100+(angleAtNeg50-angleAtNeg100)*(command+100.0f)/50.0f;
+  if(command<=0.0f) return angleAtNeg50+(angleAtZero-angleAtNeg50)*(command+50.0f)/50.0f;
+  if(command<=50.0f) return angleAtZero+(angleAtPos50-angleAtZero)*command/50.0f;
+  return angleAtPos50+(angleAtPos100-angleAtPos50)*(command-50.0f)/50.0f;
+}
 inline float activeFanCommandPercent(bool automaticMode, float manualApplied, float automaticOutput) {
   return automaticMode ? clampValue(automaticOutput,0.0f,100.0f) : clampValue(manualApplied,0.0f,100.0f);
 }

@@ -74,3 +74,5 @@ Testing/
 .vscode/ipch/
 .vscode/.browse.VC.db*
 *.code-workspace.user
+
+*.bak
