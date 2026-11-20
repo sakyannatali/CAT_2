@@ -1,14 +1,32 @@
-# PI flow control
+# AUTO flow model (PI retired)
 
-Manual mode accepts fan power directly. AUTO takes a kg/h setpoint and uses a configurable sensor 1, sensor 2, or mean of valid sensors. It is permitted only with valid calibration, a fresh selected flow value, and the vent relay enabled.
+This file retains its historical name so existing links continue to work. The
+firmware contains **no PI controller**, no integral state, no rate limiter and
+no flow-meter feedback path.
 
-Initial values: `Kp = 0.5`, `Ti = 100 s`, update period 1 s, output 0–100%, and rate limit 5 percentage points/s. The error is normalised by `PI_FLOW_FULL_SCALE_KG_H`; the integrator has anti-windup and is frozen when a saturated output would be driven further outward. MANUAL→AUTO starts from the manual output.
+AUTO is feed-forward. Once a target has been committed, the firmware evaluates
+the experimental total-flow model for the currently applied signed gate and
+uses a bounded binary search over fan power 0…100% to find the closest target.
+It sends that result through the existing central fan/actuator path only; it
+does not switch the vent relay. A gate edit has no effect until Apply, then
+AUTO immediately recalculates the model command.
 
-1. Calibrate both meters.
-2. In manual mode verify that increasing requested power changes flow in the expected direction.
-3. Start at Ti=100 s and Kp=0.5.
-4. Increase Kp gradually.
-5. If it oscillates, reduce Kp or increase Ti.
-6. Never tune PI with uncalibrated meters.
+The target choices are `NONE`, `30`, `35`, …, `500 L/min`. `NONE` commands
+model power `0%` and preserves the relay state. AUTO can be selected even if
+the vent relay is OFF; in that case the saved derived command is visible in
+diagnostics, but the applied fan power and estimated actual flow are zero.
 
-Sensor loss freezes the controller and changes to MANUAL; it never commands 100% due to missing data.
+The target is the combined model output `Qtotal = Q1 + Q2`, never the limit
+for an individual output. The 500 L/min UI limit does not clip `Q1`, `Q2`, or
+their calculated sum.
+
+The model is experimental from 5% through 60% fan command. A solved result
+below 5% is reported as `BELOW CAL RANGE`; above 60% it is `EXTRAPOLATED`.
+If the requested total is greater than the model predicts at 100%, the fan is
+commanded to 100% and the status is `UNREACHABLE`. These are diagnostic
+honesty states, not sensor-fault or relay-control commands.
+
+`fPiOutput` is an unchanged HMI component name only. Its displayed value is
+the actual applied AUTO model power, not a PI output. On AUTO→MANUAL the
+current actual power becomes the applied/pending manual power, avoiding a PWM
+step.

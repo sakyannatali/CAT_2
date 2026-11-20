@@ -5,82 +5,166 @@
 #include <math.h>
 #include <stdio.h>
 
-struct CalibrationPoint { float frequencyHz; float massFlowKgH; };
-
-inline bool calibrationTableValid(const CalibrationPoint *points, size_t count) {
-  if (points == 0 || count < 2) return false;
-  for (size_t i = 1; i < count; ++i)
-    if (!(points[i].frequencyHz > points[i - 1].frequencyHz)) return false;
+inline float clampNonNegative(float value) { return value < 0.0f ? 0.0f : value; }
+inline bool intervalElapsed(uint32_t now, uint32_t previous, uint32_t intervalMs) {
+  return (uint32_t)(now-previous) >= intervalMs;
+}
+struct PendingApplyState {
+  float applied, pending;
+  bool editing;
+  uint32_t lastEditMs;
+};
+inline float clampValue(float value, float minimum, float maximum) {
+  return value < minimum ? minimum : (value > maximum ? maximum : value);
+}
+inline float snapToStep(float value, float step, float minimum, float maximum) {
+  if (!(step > 0.0f)) return clampValue(value,minimum,maximum);
+  const float snapped=(float)((long)(value/step+(value>=0.0f?0.5f:-0.5f)))*step;
+  return clampValue(snapped,minimum,maximum);
+}
+inline float signedGateToPhysicalPercent(float signedPercent) {
+  return (clampValue(signedPercent,-100.0f,100.0f)+100.0f)*0.5f;
+}
+inline float gateAngleForSignedCommand(float signedPercent, float angleAtNeg100,
+                                       float angleAtNeg50, float angleAtZero,
+                                       float angleAtPos50, float angleAtPos100) {
+  const float command=clampValue(signedPercent,-100.0f,100.0f);
+  if(command<=-50.0f) return angleAtNeg100+(angleAtNeg50-angleAtNeg100)*(command+100.0f)/50.0f;
+  if(command<=0.0f) return angleAtNeg50+(angleAtZero-angleAtNeg50)*(command+50.0f)/50.0f;
+  if(command<=50.0f) return angleAtZero+(angleAtPos50-angleAtZero)*command/50.0f;
+  return angleAtPos50+(angleAtPos100-angleAtPos50)*(command-50.0f)/50.0f;
+}
+inline float activeFanCommandPercent(bool automaticMode, float manualApplied, float automaticOutput) {
+  return automaticMode ? clampValue(automaticOutput,0.0f,100.0f) : clampValue(manualApplied,0.0f,100.0f);
+}
+inline bool fanSetpointUsesAutoLabel(bool autoMode) { return autoMode; }
+inline float manualPowerAfterAutoFallback(float actualPower) {
+  return clampValue(actualPower,0.0f,100.0f);
+}
+inline uint8_t fanCommandToPwm(float commandPercent, bool inverted) {
+  const uint8_t direct=(uint8_t)(clampValue(commandPercent,0.0f,100.0f)*255.0f/100.0f+0.5f);
+  return inverted ? (uint8_t)(255U-direct) : direct;
+}
+struct TemperatureFaultState {
+  float value, lastGoodValue;
+  uint32_t lastGoodMs;
+  uint8_t failCount;
+  bool hasLastGood, valid, stale;
+};
+inline void temperatureStateInitialize(TemperatureFaultState &state) {
+  state.value=NAN; state.lastGoodValue=NAN; state.lastGoodMs=0; state.failCount=0;
+  state.hasLastGood=false; state.valid=false; state.stale=false;
+}
+inline uint32_t temperatureStateAgeMs(const TemperatureFaultState &state, uint32_t now) {
+  return state.hasLastGood ? (uint32_t)(now-state.lastGoodMs) : UINT32_MAX;
+}
+inline void temperatureStateRefresh(TemperatureFaultState &state, uint32_t now, uint32_t staleTimeoutMs) {
+  if (state.hasLastGood && intervalElapsed(now,state.lastGoodMs,staleTimeoutMs)) {
+    state.valid=false;
+    state.stale=true;
+  }
+}
+inline bool temperatureStateUsable(const TemperatureFaultState &state, uint32_t now, uint32_t staleTimeoutMs) {
+  return state.valid && !state.stale && state.hasLastGood &&
+         !intervalElapsed(now,state.lastGoodMs,staleTimeoutMs);
+}
+inline void temperatureStateRecordSuccess(TemperatureFaultState &state, float value, uint32_t now) {
+  state.value=value; state.lastGoodValue=value; state.lastGoodMs=now; state.failCount=0;
+  state.hasLastGood=true; state.valid=true; state.stale=false;
+}
+inline void temperatureStateRecordFailure(TemperatureFaultState &state, uint32_t now,
+                                          uint8_t failLimit, uint32_t staleTimeoutMs) {
+  if (state.failCount<UINT8_MAX) ++state.failCount;
+  temperatureStateRefresh(state,now,staleTimeoutMs);
+  if (!state.hasLastGood || state.failCount>=failLimit || state.stale) {
+    state.valid=false;
+    state.stale=true;
+    return;
+  }
+  state.value=state.lastGoodValue;
+  state.valid=true;
+  state.stale=false;
+}
+inline void pendingApplyInitialize(PendingApplyState &state, float value) {
+  state.applied=value;
+  state.pending=value;
+  state.editing=false;
+  state.lastEditMs=0;
+}
+inline void pendingApplyAdjust(PendingApplyState &state, int8_t direction, float step,
+                               float minimum, float maximum, uint32_t now) {
+  if (!state.editing) state.pending=snapToStep(state.applied,step,minimum,maximum);
+  state.pending=clampValue(state.pending+(direction < 0 ? -step : step),minimum,maximum);
+  state.editing=true;
+  state.lastEditMs=now;
+}
+inline bool pendingApplyTimedOut(PendingApplyState &state, uint32_t now, uint32_t timeoutMs) {
+  if (!state.editing || !intervalElapsed(now,state.lastEditMs,timeoutMs)) return false;
+  state.pending=state.applied;
+  state.editing=false;
   return true;
 }
-
-inline float interpolateCalibration(const CalibrationPoint *points, size_t count, float hz) {
-  if (!calibrationTableValid(points, count)) return NAN;
-  if (hz <= points[0].frequencyHz) return points[0].massFlowKgH;
-  for (size_t i = 1; i < count; ++i) {
-    if (hz <= points[i].frequencyHz) {
-      const float x0 = points[i - 1].frequencyHz, x1 = points[i].frequencyHz;
-      const float k = (hz - x0) / (x1 - x0);
-      return points[i - 1].massFlowKgH + k * (points[i].massFlowKgH - points[i - 1].massFlowKgH);
-    }
-  }
-  return points[count - 1].massFlowKgH;
+inline bool pendingApplyCommit(PendingApplyState &state) {
+  if (!state.editing) return false;
+  state.applied=state.pending;
+  state.editing=false;
+  return true;
 }
-
-inline float frequencyFromCount(uint32_t pulses, uint32_t windowUs) {
-  return windowUs == 0 ? 0.0f : (1000000.0f * pulses) / windowUs;
+inline uint32_t pendingApplyAgeMs(const PendingApplyState &state, uint32_t now) {
+  return state.editing ? (uint32_t)(now-state.lastEditMs) : 0;
 }
-inline float frequencyFromPeriod(uint32_t periodUs) {
-  return periodUs == 0 ? 0.0f : 1000000.0f / periodUs;
+inline uint32_t pendingApplyRemainingMs(const PendingApplyState &state, uint32_t now, uint32_t timeoutMs) {
+  const uint32_t age=pendingApplyAgeMs(state,now);
+  return state.editing && age<timeoutMs ? timeoutMs-age : 0;
 }
-inline float hybridFrequency(uint32_t deltaPulses, uint32_t windowUs, uint32_t lastPeriodUs,
-                             uint32_t lastPulseAgeMs, uint32_t zeroTimeoutMs) {
-  if (lastPulseAgeMs > zeroTimeoutMs) return 0.0f;
-  if (deltaPulses >= 2 && windowUs > 0) return frequencyFromCount(deltaPulses, windowUs);
-  return frequencyFromPeriod(lastPeriodUs);
-}
-
-class TimedMovingAverage {
- public:
-  TimedMovingAverage() : count_(0), next_(0) { for (uint8_t i=0;i<16;++i) valid_[i]=false; }
-  void add(float value, uint32_t now) { values_[next_]=value; times_[next_]=now; valid_[next_]=true; next_=(next_+1)%16; if(count_<16) ++count_; }
-  float value(uint32_t now, uint32_t windowMs, uint8_t *validCount = 0) {
-    float sum=0; uint8_t n=0;
-    for(uint8_t i=0;i<count_;++i) if(valid_[i] && (uint32_t)(now-times_[i]) <= windowMs) { sum+=values_[i]; ++n; }
-    if(validCount) *validCount=n;
-    return n ? sum/n : NAN;
-  }
- private:
-  float values_[16]; uint32_t times_[16]; bool valid_[16]; uint8_t count_, next_;
+struct FlowSetpointState {
+  bool appliedDefined, pendingDefined, editing;
+  float appliedLpm, pendingLpm;
+  uint32_t lastEditMs;
 };
-
-struct PiTerms { float error; float p; float i; float requested; };
-class PiControllerCore {
- public:
-  PiControllerCore() : kp(0.5f), tiSeconds(100.0f), integral(0), output(0) {}
-  float kp, tiSeconds, integral, output;
-  void reset(float initialOutput) { output=clamp(initialOutput); integral=0; }
-  void makeBumpless(float normalizedError, float desiredOutput) {
-    output=clamp(desiredOutput);
-    if(kp > 0.00001f && tiSeconds > 0.00001f) integral=(output/kp-normalizedError)*tiSeconds;
+inline bool flowSetpointValueAllowed(float value, float minimum, float maximum, float step) {
+  if (value < minimum || value > maximum || !(step > 0.0f)) return false;
+  const float steps=(value-minimum)/step;
+  const long rounded=(long)(steps+0.5f);
+  return fabsf(steps-(float)rounded)<0.001f;
+}
+inline void flowSetpointInitialize(FlowSetpointState &state, bool defined, float value) {
+  state.appliedDefined=defined; state.pendingDefined=defined;
+  state.appliedLpm=defined ? value : 0.0f; state.pendingLpm=state.appliedLpm;
+  state.editing=false; state.lastEditMs=0;
+}
+inline bool flowSetpointAdjust(FlowSetpointState &state, int8_t direction, float minimum,
+                               float maximum, float step, uint32_t now) {
+  if (!state.editing) { state.pendingDefined=state.appliedDefined; state.pendingLpm=state.appliedLpm; }
+  bool changed=false;
+  if (direction > 0) {
+    if (!state.pendingDefined) { state.pendingDefined=true; state.pendingLpm=minimum; changed=true; }
+    else { const float next=clampValue(state.pendingLpm+step,minimum,maximum); changed=next!=state.pendingLpm; state.pendingLpm=next; }
+  } else if (state.pendingDefined) {
+    if (state.pendingLpm<=minimum) { state.pendingDefined=false; state.pendingLpm=0.0f; changed=true; }
+    else { const float next=clampValue(state.pendingLpm-step,minimum,maximum); changed=next!=state.pendingLpm; state.pendingLpm=next; }
   }
-  PiTerms update(float normalizedError, float dtSeconds, float maxStep, float integralLimit) {
-    PiTerms r={normalizedError, kp*normalizedError, kp*(integral/tiSeconds), output};
-    if(!(dtSeconds > 0.0f) || tiSeconds <= 0.0f || kp < 0.0f) return r;
-    const float candidateIntegral=clampRange(integral + normalizedError*dtSeconds, -integralLimit, integralLimit);
-    const float unslewed=kp*(normalizedError+candidateIntegral/tiSeconds);
-    const bool high=unslewed>100.0f && normalizedError>0.0f;
-    const bool low=unslewed<0.0f && normalizedError<0.0f;
-    if(!high && !low) integral=candidateIntegral;
-    r.p=kp*normalizedError; r.i=kp*(integral/tiSeconds);
-    const float target=clamp(r.p+r.i);
-    output=clampRange(target, output-maxStep, output+maxStep);
-    r.requested=output;
-    return r;
-  }
-  static float clamp(float x) { return clampRange(x,0.0f,100.0f); }
-  static float clampRange(float x,float lo,float hi) { return x<lo?lo:(x>hi?hi:x); }
-};
+  if (changed || state.editing) { state.editing=true; state.lastEditMs=now; }
+  return changed;
+}
+inline bool flowSetpointCommit(FlowSetpointState &state) {
+  if (!state.editing) return false;
+  state.appliedDefined=state.pendingDefined; state.appliedLpm=state.pendingLpm;
+  state.editing=false;
+  return true;
+}
+inline bool flowSetpointTimedOut(FlowSetpointState &state, uint32_t now, uint32_t timeoutMs) {
+  if (!state.editing || !intervalElapsed(now,state.lastEditMs,timeoutMs)) return false;
+  state.pendingDefined=state.appliedDefined; state.pendingLpm=state.appliedLpm; state.editing=false;
+  return true;
+}
+inline uint32_t flowSetpointAgeMs(const FlowSetpointState &state, uint32_t now) {
+  return state.editing ? (uint32_t)(now-state.lastEditMs) : 0;
+}
+inline uint32_t flowSetpointRemainingMs(const FlowSetpointState &state, uint32_t now, uint32_t timeoutMs) {
+  const uint32_t age=flowSetpointAgeMs(state,now);
+  return state.editing && age<timeoutMs ? timeoutMs-age : 0;
+}
 
 inline void formatElapsed(uint32_t elapsedMs, char *out, size_t size) {
   const uint32_t total=elapsedMs/1000UL, h=total/3600UL, m=(total/60UL)%60UL, s=total%60UL;

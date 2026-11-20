@@ -1,0 +1,2 @@
+# Host-only tooling; never included in Arduino firmware dependencies.
+CoolProp==7.2.0

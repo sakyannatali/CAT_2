@@ -1,18 +1,34 @@
 # Diagnostics
 
-Use the 9600-baud monitor. Commands are bounded to 95 characters.
+Use the 9600-baud serial monitor. Input is bounded to 95 characters; an unknown
+or invalid command prints the compact help text.
 
 | Command | Result |
 |---|---|
-| `status` | All actuators, temperatures, flows, ToF, timer and PI state |
-| `flow`, `flow raw`, `flow reset` | Counters, Hz, period, age, kg/h where calibrated, stale flag |
-| `i2c scan`, `i2c mux` | Raw bus or PCA9547 channel scan |
-| `tof scan`, `tof status`, `tof read` | Mux/0x29/model/revision/init/measurement diagnosis |
-| `timer start|pause|reset|status` | Arduino timer state |
-| `control manual|auto` | Select control mode |
-| `control setpoint <kg/h>` | Set AUTO target |
-| `control kp <value>`, `control ti <s>` | Change PI parameters for this boot |
-| `control source 1|2|avg`, `control status` | Feedback source/status |
-| `debug off|sensors|all` | Controlled periodic diagnostics |
+| `status` | Central actuator state, pending edits, timer, temperature/ToF health, and model status |
+| `flow model` | Applied model estimate: Q1, Q2, total, target, derived fan command, actual fan command, relay and raw PWM |
+| `flow model <power> <gate>` | Diagnostic-only model calculation; power is 0…100 and gate is -100…100; no actuator changes |
+| `control manual`, `control auto` | Select MANUAL or model AUTO |
+| `control setpoint NONE` (or `0`) | Commit no flow demand, hence AUTO model PWM 0% without operating the relay |
+| `control setpoint 30` … `500` | Commit a valid five-L/min target step |
+| `control status` | Same detailed model-control status as `flow model` |
+| `timer start\|pause\|reset\|status` | Arduino timer |
+| `i2c scan`, `i2c mux`, `tof …` | Bus and ToF diagnosis |
+| `debug off\|sensors\|all` | Disable reports, sensor/ToF report, or sensor/ToF plus model report every second |
 
-ToF output identifies: no hub ACK, failed channel selection, no 0x29 device, exact model/revision, unsupported model, init failure, timeout, invalid distance, and stale measurement. A non-`0xEE` model is not treated as VL53L0X.
+`flow`, `flow raw`, `flow density`, `flow reset`, PI tuning commands, pulse
+counters and Hz output have been intentionally removed because the hardware
+meters are disconnected. The `flow model` diagnostic is an estimate, not a
+replacement for a sensor.
+
+Each edit record reports applied value, pending value, editing state, age and
+remaining time. The five-second timeout is measured from the latest `+`/`-`
+event. An expired edit is discarded; Apply while not editing is a no-op.
+
+`Fan command: <percent>% -> PWM <0..255>` appears only when the actual raw PWM
+value changes. It is the trace of the sole hardware PWM path. With vent relay
+OFF, applied fan power and calculated flow are zero even if a manual or model
+command has been saved.
+
+Temperature and ToF fault information remains independent from model AUTO.
+A stale temperature is displayed and logged, but does not alter model PWM.

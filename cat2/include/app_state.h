@@ -1,14 +1,9 @@
 #pragma once
 #include <Arduino.h>
+#include "pure_logic.h"
+#include "flow_model.h"
 
 enum FlowControlMode : uint8_t { FLOW_MANUAL, FLOW_AUTO };
-enum FlowFeedbackSource : uint8_t { FLOW_SENSOR_1, FLOW_SENSOR_2, FLOW_AVERAGE_OF_VALID };
-struct ValueState { float value; bool valid; uint32_t updatedMs; };
-struct FlowState {
-  uint32_t totalPulses, lastPulsePeriodUs, lastPulseAgeMs;
-  float frequencyHz, massFlowKgH, filteredMassFlowKgH;
-  bool valid, stale, calibrated;
-};
 struct TofState {
   uint8_t channel, modelId, revisionId;
   uint16_t distanceMm;
@@ -18,21 +13,32 @@ struct TofState {
 struct AppState {
   bool compressorOn, ventRelayOn;
   float requestedFanPowerPercent, appliedFanPowerPercent;
-  float gatePercent; uint8_t gateAngle;
-  FlowControlMode flowControlMode; float flowSetpointKgH;
+  float gatePercent, gateCommandPercent; uint8_t gateAngle;
+  FlowControlMode flowControlMode;
+  PendingApplyState ventPowerEdit, gateEdit;
+  FlowSetpointState flowSetpoint;
   bool timerRunning; uint32_t timerElapsedMs;
-  ValueState outletTemperature, skinTemperature[2];
-  FlowState flow[2]; TofState tof[2];
-  float piOutputPercent, piError, piP, piI;
-  bool autoBlocked; const char *autoBlockReason;
+  TemperatureFaultState outletTemperature, skinTemperature[2];
+  TofState tof[2];
+  FlowEstimate modelFlow;
+  float modelTargetFanPowerPercent;
+  FlowModelStatus modelStatus;
+  uint8_t fanPwmRaw;
 };
 extern AppState app;
 void appStateBegin();
 void setCompressor(bool on);
 void setVentEnabled(bool on);
 void setFanPowerPercent(float percent);
-void setGatePercent(float percent);
+void setAutomaticFanPowerPercent(float percent);
+void setGateCommandPercent(int16_t signedPercent);
 bool setFlowControlMode(FlowControlMode mode);
-void setFlowSetpointKgH(float kgH);
-void setFlowFeedbackSource(FlowFeedbackSource source);
-FlowFeedbackSource getFlowFeedbackSource();
+bool setFlowSetpointLpm(float lpm);
+void setFlowSetpointNone();
+void editVentPower(int8_t direction, uint32_t now);
+void editGate(int8_t direction, uint32_t now);
+void editFlowSetpoint(int8_t direction, uint32_t now);
+bool applyVentPowerEdit();
+bool applyGateEdit();
+bool applyFlowSetpointEdit();
+void appStateService(uint32_t now);
